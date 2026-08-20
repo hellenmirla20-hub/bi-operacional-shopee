@@ -23,7 +23,7 @@ function coletaClass(s){
 // ==================== FONTE DE DADOS AO VIVO ====================
 // Cole aqui a URL do Web App do Apps Script (Deploy > New deployment > Web app).
 // Veja instruções completas no arquivo DEPLOY.md.
-const API_URL = "https://script.google.com/a/macros/shopee.com/s/AKfycbxC5pQ4aFjMk52WlqN4plWYa7eSfknpQUxkQA5ocRJy_zgj1gfezzGe1vpoRAfkWZ_-JQ/exec";
+const API_URL = "https://script.google.com/a/macros/shopee.com/s/AKfycbyAlO5tzyNj2xxOjZDRkT8GNov5h9HwEjaRHOvPypVwYkymldkqCXbY15lSIduc1UNTNQ/exec";
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // busca dados novos a cada 5 minutos
 
 let DATA = [];
