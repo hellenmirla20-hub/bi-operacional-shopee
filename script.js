@@ -82,45 +82,50 @@ function setLiveStatus(ok, message){
   chip.lastChild.textContent = " " + message;
 }
 
-// Busca dados via JSONP (tag <script>) em vez de fetch().
-// O Web App do Apps Script fica restrito a "Qualquer pessoa dentro
-// da Shopee Mobile" (o Workspace não libera "Anyone" público) — um
-// fetch() cross-origin não carrega a sessão de login do Google
-// nesse caso e cai numa tela de login. JSONP não tem essa
-// restrição: carrega a sessão de quem já está logada com a conta
-// @shopee.com, igual ao painel de Abertura aos Sábados.
-function jsonp(url, timeoutMs){
+// Busca dados via <iframe> escondido + postMessage, em vez de
+// fetch() ou JSONP. O Web App do Apps Script fica restrito a
+// "Qualquer pessoa dentro da Shopee Mobile" (o Workspace não libera
+// "Anyone" público). Tanto fetch() quanto JSONP (tag <script>)
+// cross-origin acabam bloqueados pelo Chrome (proteção "ORB") quando
+// a resposta passa pelo redirecionamento interno do Google. Um
+// <iframe> é uma navegação de página normal — não sofre esse
+// bloqueio — e a própria página carregada dentro dele (ver
+// WebApp.gs) manda os dados de volta via postMessage.
+function fetchViaIframe(url, timeoutMs){
   return new Promise((resolve, reject) => {
-    const cbName = "__biOperacionalCb_" + Date.now() + "_" + Math.floor(Math.random()*1e6);
-    const script = document.createElement("script");
+    const iframe = document.createElement("iframe");
+    iframe.style.display = "none";
     let settled = false;
     let timer;
-    const cleanup = () => {
-      delete window[cbName];
-      if(script.parentNode) script.parentNode.removeChild(script);
-      clearTimeout(timer);
-    };
-    window[cbName] = (data) => {
+    function onMessage(ev){
+      if(!ev.data || ev.data.source !== "bi-operacional-shopee") return;
       if(settled) return;
       settled = true;
       cleanup();
-      resolve(data);
-    };
+      if(ev.data.ok) resolve(ev.data.payload);
+      else reject(new Error(ev.data.error || "Erro desconhecido ao buscar dados"));
+    }
+    function cleanup(){
+      window.removeEventListener("message", onMessage);
+      if(iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      clearTimeout(timer);
+    }
+    window.addEventListener("message", onMessage);
     timer = setTimeout(() => {
       if(settled) return;
       settled = true;
       cleanup();
       reject(new Error("Tempo esgotado ao buscar dados. Confira se você está logada com sua conta @shopee.com."));
     }, timeoutMs || 20000);
-    script.onerror = () => {
+    iframe.onerror = () => {
       if(settled) return;
       settled = true;
       cleanup();
-      reject(new Error("Falha ao carregar o script de dados"));
+      reject(new Error("Falha ao carregar o iframe de dados"));
     };
     const sep = url.indexOf("?") >= 0 ? "&" : "?";
-    script.src = url + sep + "callback=" + cbName + "&_=" + Date.now();
-    document.body.appendChild(script);
+    iframe.src = url + sep + "embed=1&_=" + Date.now();
+    document.body.appendChild(iframe);
   });
 }
 
@@ -132,7 +137,7 @@ async function loadData(showOverlay){
     if(API_URL.indexOf("COLOQUE_AQUI") !== -1){
       throw new Error("API_URL ainda não configurada em script.js");
     }
-    const json = await jsonp(API_URL, 20000);
+    const json = await fetchViaIframe(API_URL, 20000);
     const rows = Array.isArray(json) ? json : (json.rows || []);
     DATA = normalizeRows(rows);
     banner.style.display = "none";
