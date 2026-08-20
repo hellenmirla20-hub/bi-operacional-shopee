@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BI Operacional Shopee</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="loading-overlay" class="loading-overlay"><div class="loading-box"><span class="spinner"></span> Carregando dados da planilha…</div></div>
+<div class="app">
+  <div class="sidebar">
+    <div class="brand">
+      <div class="brand-icon">BI</div>
+      <div class="brand-text">
+        <div class="t1">BI OPERACIONAL</div>
+        <div class="t2">SHOPEE</div>
+      </div>
+    </div>
+    <div class="nav-item active" data-section="resumo"><span class="dot"></span>Resumo Geral</div>
+    <div class="nav-item" data-section="gestao"><span class="dot"></span>Minha Gestão<span class="nav-badge" id="nav-gestao-badge">0</span></div>
+    <div class="nav-item" data-section="rankings"><span class="dot"></span>Rankings</div>
+    <div class="nav-item" data-section="desempenho"><span class="dot"></span>Desempenho por Agência</div>
+    <div class="nav-item" data-section="detalhe"><span class="dot"></span>Detalhe da Agência</div>
+    <div class="nav-item" data-section="base"><span class="dot"></span>Base de Dados</div>
+    <div class="sidebar-foot">
+      <div class="sidebar-foot-label">Responsáveis</div>
+      <div class="resp-row"><div class="avatar" style="background:var(--series-1)">H</div>Hellen Mirla</div>
+      <div class="resp-row"><div class="avatar" style="background:var(--series-2)">V</div>Vitor Hugo</div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="error-banner" id="error-banner"></div>
+    <div class="topbar">
+      <div class="filter"><label>Responsável</label>
+        <select id="f-resp"><option value="">Todos</option></select>
+      </div>
+      <div class="filter"><label>Sub-Regional</label>
+        <select id="f-subreg"><option value="">Todos</option></select>
+      </div>
+      <div class="filter"><label>Cidade</label>
+        <select id="f-cidade"><option value="">Todas</option></select>
+      </div>
+      <div class="filter"><label>Status Coleta</label>
+        <select id="f-statuscoleta"><option value="">Todos</option></select>
+      </div>
+      <div class="filter"><label>Risco Operacional</label>
+        <select id="f-risco"><option value="">Todos</option></select>
+      </div>
+      <div class="spacer"></div>
+      <div class="update-chip" id="update-chip"><span class="live-dot" id="live-dot"></span> Sincronizando…</div>
+      <button class="theme-btn" id="refresh-btn">⟳ Atualizar agora</button>
+      <button class="theme-btn" id="theme-toggle">◑ Modo escuro</button>
+    </div>
+
+    <!-- RESUMO GERAL -->
+    <div class="section active" id="sec-resumo">
+      <div class="kpi-grid" id="kpi-grid"></div>
+      <div class="kpi-grid kpi-grid-secondary" id="kpi-grid-extra"></div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><div class="card-title">⚠ Alertas — Prioridade</div><div class="card-link" data-goto="rankings">Ver rankings</div></div>
+          <div class="col-head" style="display:grid;grid-template-columns:3px 1.3fr 0.55fr 0.95fr 0.7fr 0.55fr;gap:10px;">
+            <span></span><span>Agência</span><span>DOP</span><span>Indicador</span><span>Valor</span><span>Score</span>
+          </div>
+          <div id="alerts-list"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">◓ Distribuição por Risco Operacional</div></div>
+          <div class="donut-wrap">
+            <svg id="donut-risco" width="150" height="150" viewBox="0 0 150 150"></svg>
+            <div class="legend" id="legend-risco"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><div class="card-title">📉 Ranking — Pior % FIFO (semana)</div><div class="card-link" data-goto="rankings">Ver ranking completo</div></div>
+          <div id="rank-fifo-resumo"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">📉 Ranking — Pior % Same Day (semana)</div><div class="card-link" data-goto="rankings">Ver ranking completo</div></div>
+          <div id="rank-sameday-resumo"></div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><div class="card-title">🚚 Dops sem coleta há mais tempo</div></div>
+          <div class="table-wrap"><table class="data" id="table-sem-coleta"></table></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">🏙 Distribuição por Cidade</div></div>
+          <div class="donut-wrap">
+            <svg id="donut-cidade" width="150" height="150" viewBox="0 0 150 150"></svg>
+            <div class="legend" id="legend-cidade"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><div class="card-title">🚛 Distribuição por Status de Coleta</div></div>
+          <div class="donut-wrap">
+            <svg id="donut-coleta" width="150" height="150" viewBox="0 0 150 150"></svg>
+            <div class="legend" id="legend-coleta"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">📊 Score Operacional médio por Sub-Regional</div></div>
+          <div id="bars-subreg"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MINHA GESTAO -->
+    <div class="section" id="sec-gestao">
+      <div class="section-title">Minha Gestão</div>
+      <div class="pill-row" id="gestao-pills"></div>
+      <div class="kpi-grid" id="kpi-grid-gestao"></div>
+      <div class="card">
+        <div class="card-head"><div class="card-title">Agências sob responsabilidade</div></div>
+        <div class="table-wrap"><table class="data" id="table-gestao"></table></div>
+      </div>
+    </div>
+
+    <!-- RANKINGS -->
+    <div class="section" id="sec-rankings">
+      <div class="section-title">Rankings</div>
+      <div class="grid3">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Pior % FIFO (semana)</div></div>
+          <div id="rank-fifo"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Pior % Same Day (semana)</div></div>
+          <div id="rank-sameday"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Pior Score Operacional</div></div>
+          <div id="rank-score"></div>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Maior % Atrasados</div></div>
+          <div id="rank-atrasados"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Mais horas sem coleta</div></div>
+          <div id="rank-coleta"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DESEMPENHO -->
+    <div class="section" id="sec-desempenho">
+      <div class="section-title">Desempenho por Agência</div>
+      <div class="card">
+        <div class="table-wrap"><table class="data" id="table-desempenho"></table></div>
+      </div>
+    </div>
+
+    <!-- DETALHE -->
+    <div class="section" id="sec-detalhe">
+      <div class="section-title">Detalhe da Agência</div>
+      <div class="search-box"><input id="detail-search" placeholder="Buscar por DOP ou nome da agência…"></div>
+      <div class="card" id="detail-card"><div class="empty-state">Busque uma agência pelo DOP ou nome para ver o detalhe completo.</div></div>
+    </div>
+
+    <!-- BASE -->
+    <div class="section" id="sec-base">
+      <div class="section-title">Base de Dados</div>
+      <div class="card">
+        <div class="table-wrap"><table class="data" id="table-base"></table></div>
+      </div>
+    </div>
+
+    <div class="footer-note">Fonte: Base tratada (BI Operacional Shopee) · Painel desenvolvido para Hellen Mirla e Vitor Hugo 💙</div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
