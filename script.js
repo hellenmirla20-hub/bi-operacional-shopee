@@ -40,6 +40,7 @@ function normalizeRows(raw){
     fifoHojeFlag: num(r["FIFO HOJE"]), sameDayFlag: num(r["SAME DAY"]),
     fifoSemana: num(r["FIFO SEMANA"]), sameDaySemana: num(r["SAME DAY SEMANA"]),
     lost: num(r["LOST"]), pctAtrasados: num(r["% ATRASADOS"]),
+    perdasQtd: num(r["QTD PACOTES PERDIDOS"]), perdasValor: num(r["VALOR PERDIDO (R$)"]),
     backlogEnvelhecido: num(r["BACKLOG ENVELHECIDO"]), totalAtrasados: num(r["TOTAL ATRASADOS"]),
     statusColeta: r["STATUS COLETA"]||"—", horasSemColeta: num(r["HORAS SEM COLETA"]),
     agingSemColeta: num(r["AGING SEM COLETA"]), ultimaColeta: r["ULTIMA COLETA"],
@@ -202,10 +203,14 @@ function kpiCardsSecondary(rows){
   const scoreMedio = rows.length? rows.reduce((s,d)=>s+d.score,0)/rows.length : 0;
   const criticos = rows.filter(d=>riskClass(d.risco)==="critical").length;
   const atrasadosMedio = rows.length? rows.reduce((s,d)=>s+d.pctAtrasados,0)/rows.length : 0;
+  const perdasQtdTotal = rows.reduce((s,d)=>s+d.perdasQtd,0);
+  const perdasValorTotal = rows.reduce((s,d)=>s+d.perdasValor,0);
   return [
     {label:"Score Operacional Médio", value: scoreMedio.toFixed(0), icon:"🎯"},
     {label:"Agências em Risco Crítico", value: criticos, icon:"🔴", cls: criticos>0?"crit":""},
     {label:"% Atrasados Médio", value: atrasadosMedio.toFixed(1)+"%", icon:"⏱"},
+    {label:"Pacotes Perdidos (Total)", value: perdasQtdTotal.toLocaleString("pt-BR"), icon:"📉", cls: perdasQtdTotal>0?"warn":""},
+    {label:"Valor Perdido (R$)", value: perdasValorTotal.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}), icon:"💸", cls: perdasValorTotal>0?"crit":""},
   ];
 }
 
@@ -429,6 +434,8 @@ function renderDetail(d){
       <div class="detail-item"><div class="l">% Atrasados</div><div class="v">${d.pctAtrasados.toFixed(1)}%</div></div>
       <div class="detail-item"><div class="l">Backlog Envelhecido</div><div class="v">${d.backlogEnvelhecido}</div></div>
       <div class="detail-item"><div class="l">Lost</div><div class="v">${d.lost}</div></div>
+      <div class="detail-item"><div class="l">Pacotes Perdidos</div><div class="v">${d.perdasQtd}</div></div>
+      <div class="detail-item"><div class="l">Valor Perdido</div><div class="v">${d.perdasValor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</div></div>
       <div class="detail-item"><div class="l">Status Coleta</div><div class="v" style="font-size:13px">${d.statusColeta}</div></div>
       <div class="detail-item"><div class="l">Horas sem coleta</div><div class="v">${d.horasSemColeta.toFixed(1)}h</div></div>
       <div class="detail-item"><div class="l">Última Coleta</div><div class="v" style="font-size:13px">${fmtDate(d.ultimaColeta)}</div></div>
