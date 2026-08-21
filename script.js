@@ -349,9 +349,9 @@ function rankRow(i,d,val,cls){
 const TABLE_COLS = [
   {k:"dop", l:"DOP"}, {k:"agencia", l:"Agência"}, {k:"cidade", l:"Cidade"}, {k:"resp", l:"Responsável"},
   {k:"backlogOps", l:"Backlog"}, {k:"fifoSemana", l:"% FIFO Semana", fmt:pct0}, {k:"sameDaySemana", l:"% Same Day Semana", fmt:pct0},
-  {k:"score", l:"Score"}, {k:"risco", l:"Risco", badge:riskClass}, {k:"statusColeta", l:"Coleta", badge:coletaClass}, {k:"status", l:"Status", badge:riskClass}
+  {k:"perdasQtd", l:"Pacotes Perdidos"}, {k:"risco", l:"Risco", badge:riskClass}, {k:"statusColeta", l:"Coleta", badge:coletaClass}, {k:"status", l:"Status", badge:riskClass}
 ];
-let sortState = { key:"score", dir:1 };
+let sortState = { key:"backlogOps", dir:-1 };
 
 function renderTable(targetId, rows, cols, sortKeyState){
   const el = document.getElementById(targetId);
@@ -390,7 +390,7 @@ const BASE_COLS = [
   {k:"statusColeta", l:"Status Coleta", badge:coletaClass}, {k:"status", l:"Status", badge:riskClass}
 ];
 let baseSortState = { key:"dop", dir:1 };
-let gestaoSortState = { key:"score", dir:1 };
+let gestaoSortState = { key:"backlogOps", dir:-1 };
 
 function fmtDate(iso){
   if(!iso) return "—";
@@ -433,7 +433,6 @@ function renderDetail(d){
       <div class="detail-item"><div class="l">Inbound / Outbound</div><div class="v">${d.inbound.toLocaleString("pt-BR")} / ${d.outbound.toLocaleString("pt-BR")}</div></div>
       <div class="detail-item"><div class="l">% Atrasados</div><div class="v">${d.pctAtrasados.toFixed(1)}%</div></div>
       <div class="detail-item"><div class="l">Backlog Envelhecido</div><div class="v">${d.backlogEnvelhecido}</div></div>
-      <div class="detail-item"><div class="l">Lost</div><div class="v">${d.lost}</div></div>
       <div class="detail-item"><div class="l">Pacotes Perdidos</div><div class="v">${d.perdasQtd}</div></div>
       <div class="detail-item"><div class="l">Valor Perdido</div><div class="v">${d.perdasValor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</div></div>
       <div class="detail-item"><div class="l">Status Coleta</div><div class="v" style="font-size:13px">${d.statusColeta}</div></div>
