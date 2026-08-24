@@ -25,6 +25,7 @@
     <div class="nav-item" data-section="desempenho"><span class="dot"></span>Desempenho por Agência</div>
     <div class="nav-item" data-section="detalhe"><span class="dot"></span>Detalhe da Agência</div>
     <div class="nav-item" data-section="base"><span class="dot"></span>Base de Dados</div>
+    <div class="nav-item" data-section="historico"><span class="dot"></span>Histórico Pós-Fechamento</div>
     <div class="sidebar-foot">
       <div class="sidebar-foot-label">Responsáveis</div>
       <div class="resp-row"><div class="avatar" style="background:var(--series-1)">H</div>Hellen Mirla</div>
@@ -178,6 +179,24 @@
       <div class="section-title">Base de Dados</div>
       <div class="card">
         <div class="table-wrap"><table class="data" id="table-base"></table></div>
+      </div>
+    </div>
+
+    <!-- HISTORICO POS-FECHAMENTO -->
+    <div class="section" id="sec-historico">
+      <div class="section-title">Histórico — Inbound Pós-Fechamento</div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">📦 Ranking — Últimos 30 dias</div>
+          <div class="card-link" id="historico-refresh">Atualizar</div>
+        </div>
+        <div class="table-wrap"><table class="data" id="table-historico"></table></div>
+      </div>
+      <div class="card" id="historico-chart-card" style="margin-top:14px; display:none;">
+        <div class="card-head">
+          <div class="card-title" id="historico-chart-title">Evolução diária</div>
+        </div>
+        <svg id="historico-chart" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
       </div>
     </div>
 
