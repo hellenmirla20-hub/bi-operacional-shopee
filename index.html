@@ -187,14 +187,22 @@
       <div class="section-title">Histórico — Inbound Pós-Fechamento</div>
       <div class="card">
         <div class="card-head">
-          <div class="card-title">📦 Ranking — Últimos 30 dias</div>
+          <div class="card-title">📦 Ranking — Top 10 agências</div>
           <div class="card-link" id="historico-refresh">Atualizar</div>
+        </div>
+        <div class="pill-row" id="historico-mode-pills">
+          <div class="pill active" data-mode="dia">Por dia</div>
+          <div class="pill" data-mode="semana">Por semana</div>
+        </div>
+        <div class="filter" id="historico-period-filter" style="max-width:220px; margin-bottom:14px;">
+          <label id="historico-period-label">Dia</label>
+          <select id="historico-period-select"></select>
         </div>
         <div class="table-wrap"><table class="data" id="table-historico"></table></div>
       </div>
       <div class="card" id="historico-chart-card" style="margin-top:14px; display:none;">
         <div class="card-head">
-          <div class="card-title" id="historico-chart-title">Evolução diária</div>
+          <div class="card-title" id="historico-chart-title">Evolução diária (últimos 30 dias)</div>
         </div>
         <svg id="historico-chart" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
       </div>
