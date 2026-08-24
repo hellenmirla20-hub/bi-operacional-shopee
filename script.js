@@ -176,7 +176,9 @@ async function loadHistorico(){
   if(tableEl) tableEl.innerHTML = '<tbody><tr><td style="padding:14px;color:var(--text-muted)">Carregando histórico…</td></tr></tbody>';
   try{
     const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
-    const json = await fetchViaIframe(API_URL + sep + "tipo=historico", 20000);
+    // Timeout maior que o dos dados principais: a aba "Dados por Dia" tem
+    // dezenas de milhares de linhas, então essa busca pode demorar mais.
+    const json = await fetchViaIframe(API_URL + sep + "tipo=historico", 45000);
     HIST_DATA = Array.isArray(json) ? json : (json.historico || []);
     HIST_LOADED = true;
     renderHistoricoRanking();
