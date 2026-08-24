@@ -170,6 +170,8 @@ document.getElementById("refresh-btn").addEventListener("click", ()=> loadData(t
 let HIST_DATA = [];
 let HIST_LOADED = false;
 let HIST_SELECTED_DOP = null;
+let HIST_MODE = "dia"; // "dia" | "semana"
+let HIST_SELECTED_PERIOD = null; // chave do dia (YYYY-MM-DD) ou da semana, conforme HIST_MODE
 
 async function loadHistorico(){
   const tableEl = document.getElementById("table-historico");
@@ -181,6 +183,8 @@ async function loadHistorico(){
     const json = await fetchViaIframe(API_URL + sep + "tipo=historico", 45000);
     HIST_DATA = Array.isArray(json) ? json : (json.historico || []);
     HIST_LOADED = true;
+    HIST_SELECTED_PERIOD = null;
+    populateHistoricoPeriodos();
     renderHistoricoRanking();
   } catch(err){
     console.error(err);
@@ -191,11 +195,19 @@ async function loadHistorico(){
   }
 }
 
-// Agrupa HIST_DATA (lista achatada {dop,data,valor}) por DOP, cada série
+// Só considera, no histórico, os DOPs que já existem na base do painel
+// (agências sob gestão de Hellen/Vitor) — a aba "Dados por Dia" tem
+// registros de muitas outras agências fora desse escopo, que só
+// poluiriam o ranking (e deixavam a lista enorme).
+function historicoFiltradoPorEscopo(){
+  return HIST_DATA.filter(h => DATA.some(d=>String(d.dop)===String(h.dop)));
+}
+
+// Agrupa o histórico (já filtrado pro escopo) por DOP, cada série
 // ordenada por data crescente — pronta pra virar linha do gráfico.
 function historicoPorDop(){
   const porDop = {};
-  HIST_DATA.forEach(h=>{
+  historicoFiltradoPorEscopo().forEach(h=>{
     if(!porDop[h.dop]) porDop[h.dop] = [];
     porDop[h.dop].push(h);
   });
@@ -203,45 +215,106 @@ function historicoPorDop(){
   return porDop;
 }
 
+function fmtDateShort(iso){
+  const d = new Date(iso);
+  if(isNaN(d)) return iso;
+  return d.toLocaleDateString("pt-BR", {day:"2-digit", month:"2-digit"});
+}
+function dateKey(iso){
+  const d = new Date(iso);
+  if(isNaN(d)) return iso;
+  return d.toISOString().slice(0,10);
+}
+
+// Preenche o seletor de período (dias ou semanas disponíveis no histórico
+// carregado), mantendo a seleção atual se ela ainda existir na lista.
+function populateHistoricoPeriodos(){
+  const escopo = historicoFiltradoPorEscopo();
+  const sel = document.getElementById("historico-period-select");
+  const label = document.getElementById("historico-period-label");
+  if(!sel) return;
+
+  if(HIST_MODE === "dia"){
+    if(label) label.textContent = "Dia";
+    const dias = [...new Set(escopo.map(h=>dateKey(h.data)))].sort().reverse();
+    sel.innerHTML = dias.map(k=>`<option value="${k}">${fmtDateShort(k)}</option>`).join("");
+    if(!dias.includes(HIST_SELECTED_PERIOD)) HIST_SELECTED_PERIOD = dias[0] || null;
+  } else {
+    if(label) label.textContent = "Semana";
+    const semanas = [...new Set(escopo.map(h=>h.semana).filter(Boolean))].sort().reverse();
+    sel.innerHTML = semanas.map(s=>`<option value="${s}">Semana ${s}</option>`).join("");
+    if(!semanas.includes(HIST_SELECTED_PERIOD)) HIST_SELECTED_PERIOD = semanas[0] || null;
+  }
+  sel.value = HIST_SELECTED_PERIOD || "";
+}
+
+document.querySelectorAll("#historico-mode-pills .pill").forEach(p=>{
+  p.addEventListener("click", ()=>{
+    if(p.dataset.mode === HIST_MODE) return;
+    document.querySelectorAll("#historico-mode-pills .pill").forEach(x=>x.classList.remove("active"));
+    p.classList.add("active");
+    HIST_MODE = p.dataset.mode;
+    HIST_SELECTED_PERIOD = null;
+    if(HIST_LOADED){ populateHistoricoPeriodos(); renderHistoricoRanking(); }
+  });
+});
+
+const histPeriodSelect = document.getElementById("historico-period-select");
+if(histPeriodSelect) histPeriodSelect.addEventListener("change", e=>{
+  HIST_SELECTED_PERIOD = e.target.value;
+  renderHistoricoRanking();
+});
+
+// Ranking Top 10 do período selecionado (um dia específico, ou a soma da
+// semana selecionada), com % de impacto = pós-fechamento / inbound total
+// da agência naquele período.
 function renderHistoricoRanking(){
-  const porDop = historicoPorDop();
-  const linhas = Object.keys(porDop).map(dop=>{
-    const serie = porDop[dop];
-    const total = serie.reduce((s,h)=>s+num(h.valor),0);
-    const ultimo = serie[serie.length-1];
+  const escopo = historicoFiltradoPorEscopo();
+
+  const linhasPeriodo = HIST_MODE === "dia"
+    ? escopo.filter(h => dateKey(h.data) === HIST_SELECTED_PERIOD)
+    : escopo.filter(h => h.semana === HIST_SELECTED_PERIOD);
+
+  const porDopPeriodo = {};
+  linhasPeriodo.forEach(h=>{
+    if(!porDopPeriodo[h.dop]) porDopPeriodo[h.dop] = { valor:0, inboundTotal:0 };
+    porDopPeriodo[h.dop].valor += num(h.valor);
+    porDopPeriodo[h.dop].inboundTotal += num(h.inboundTotal);
+  });
+
+  const ranking = Object.keys(porDopPeriodo).map(dop=>{
     const info = DATA.find(d=>String(d.dop)===String(dop));
+    const { valor, inboundTotal } = porDopPeriodo[dop];
     return {
       dop,
       agencia: info ? info.agencia : "—",
       resp: info ? info.resp : "—",
-      hoje: ultimo ? num(ultimo.valor) : 0,
-      total30: total
+      valor,
+      pct: inboundTotal > 0 ? (valor/inboundTotal) : 0
     };
-  }).sort((a,b)=>b.total30-a.total30);
+  }).sort((a,b)=>b.valor-a.valor).slice(0,10);
 
   const el = document.getElementById("table-historico");
   if(!el) return;
-  if(!linhas.length){
+  if(!ranking.length){
     el.innerHTML = "";
-    el.parentElement.innerHTML = '<div class="empty-state">Sem dados de histórico no período.</div>';
+    el.parentElement.innerHTML = '<div class="empty-state">Sem dados de histórico para o período selecionado.</div>';
     return;
   }
 
-  const thead = "<thead><tr><th>DOP</th><th>Agência</th><th>Responsável</th><th>Hoje</th><th>Total (30 dias)</th></tr></thead>";
-  const tbody = "<tbody>" + linhas.map(l=>`
+  const thead = "<thead><tr><th>DOP</th><th>Agência</th><th>Responsável</th><th>Pós-Fechamento</th><th>% Impacto</th></tr></thead>";
+  const tbody = "<tbody>" + ranking.map(l=>`
     <tr onclick="selecionarHistoricoDop(${JSON.stringify(l.dop)})" class="${String(l.dop)===String(HIST_SELECTED_DOP)?'row-selected':''}">
       <td class="dop-strong">${l.dop}</td>
       <td>${l.agencia}</td>
       <td>${l.resp}</td>
-      <td>${l.hoje.toLocaleString("pt-BR")}</td>
-      <td>${l.total30.toLocaleString("pt-BR")}</td>
+      <td>${l.valor.toLocaleString("pt-BR")}</td>
+      <td>${pct0(l.pct)}</td>
     </tr>`).join("") + "</tbody>";
   el.innerHTML = thead + tbody;
 
-  if(linhas.length){
-    const aindaExiste = linhas.some(l=>String(l.dop)===String(HIST_SELECTED_DOP));
-    selecionarHistoricoDop(aindaExiste ? HIST_SELECTED_DOP : linhas[0].dop);
-  }
+  const aindaExiste = ranking.some(l=>String(l.dop)===String(HIST_SELECTED_DOP));
+  selecionarHistoricoDop(aindaExiste ? HIST_SELECTED_DOP : ranking[0].dop);
 }
 
 function selecionarHistoricoDop(dop){
@@ -257,14 +330,8 @@ function selecionarHistoricoDop(dop){
   const card = document.getElementById("historico-chart-card");
   const title = document.getElementById("historico-chart-title");
   if(card) card.style.display = "block";
-  if(title) title.textContent = "Evolução diária — " + (info ? info.agencia : ("DOP " + dop)) + " (DOP " + dop + ")";
+  if(title) title.textContent = "Evolução diária (últimos 30 dias) — " + (info ? info.agencia : ("DOP " + dop)) + " (DOP " + dop + ")";
   drawLineChart("historico-chart", serie.map(h=>({label: fmtDateShort(h.data), value: num(h.valor)})));
-}
-
-function fmtDateShort(iso){
-  const d = new Date(iso);
-  if(isNaN(d)) return iso;
-  return d.toLocaleDateString("pt-BR", {day:"2-digit", month:"2-digit"});
 }
 
 // Gráfico de linha simples em SVG puro (sem lib externa), no mesmo estilo
