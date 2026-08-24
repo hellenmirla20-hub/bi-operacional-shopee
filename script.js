@@ -98,8 +98,13 @@ function fetchViaIframe(url, timeoutMs){
     iframe.style.display = "none";
     let settled = false;
     let timer;
+    // rid identifica esta chamada específica — evita que duas buscas
+    // concorrentes (ex: dados principais + histórico, disparadas quase
+    // ao mesmo tempo) acabem resolvendo com a resposta uma da outra.
+    const rid = "r" + Date.now() + "_" + Math.random().toString(36).slice(2);
     function onMessage(ev){
       if(!ev.data || ev.data.source !== "bi-operacional-shopee") return;
+      if(ev.data.rid !== rid) return;
       if(settled) return;
       settled = true;
       cleanup();
@@ -125,7 +130,7 @@ function fetchViaIframe(url, timeoutMs){
       reject(new Error("Falha ao carregar o iframe de dados"));
     };
     const sep = url.indexOf("?") >= 0 ? "&" : "?";
-    iframe.src = url + sep + "embed=1&_=" + Date.now();
+    iframe.src = url + sep + "embed=1&rid=" + rid + "&_=" + Date.now();
     document.body.appendChild(iframe);
   });
 }
@@ -158,6 +163,165 @@ async function loadData(showOverlay){
 }
 
 document.getElementById("refresh-btn").addEventListener("click", ()=> loadData(true));
+
+// ==================== HISTÓRICO — INBOUND PÓS-FECHAMENTO ====================
+// Carregado sob demanda (só quando a aba "Histórico Pós-Fechamento" é aberta
+// pela primeira vez), pra não pesar a busca automática de 5 em 5 minutos.
+let HIST_DATA = [];
+let HIST_LOADED = false;
+let HIST_SELECTED_DOP = null;
+
+async function loadHistorico(){
+  const tableEl = document.getElementById("table-historico");
+  if(tableEl) tableEl.innerHTML = '<tbody><tr><td style="padding:14px;color:var(--text-muted)">Carregando histórico…</td></tr></tbody>';
+  try{
+    const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+    const json = await fetchViaIframe(API_URL + sep + "tipo=historico", 20000);
+    HIST_DATA = Array.isArray(json) ? json : (json.historico || []);
+    HIST_LOADED = true;
+    renderHistoricoRanking();
+  } catch(err){
+    console.error(err);
+    if(tableEl){
+      tableEl.innerHTML = "";
+      tableEl.parentElement.innerHTML = '<div class="empty-state">Não foi possível carregar o histórico agora (' + err.message + ').</div>';
+    }
+  }
+}
+
+// Agrupa HIST_DATA (lista achatada {dop,data,valor}) por DOP, cada série
+// ordenada por data crescente — pronta pra virar linha do gráfico.
+function historicoPorDop(){
+  const porDop = {};
+  HIST_DATA.forEach(h=>{
+    if(!porDop[h.dop]) porDop[h.dop] = [];
+    porDop[h.dop].push(h);
+  });
+  Object.values(porDop).forEach(arr=> arr.sort((a,b)=> new Date(a.data)-new Date(b.data)));
+  return porDop;
+}
+
+function renderHistoricoRanking(){
+  const porDop = historicoPorDop();
+  const linhas = Object.keys(porDop).map(dop=>{
+    const serie = porDop[dop];
+    const total = serie.reduce((s,h)=>s+num(h.valor),0);
+    const ultimo = serie[serie.length-1];
+    const info = DATA.find(d=>String(d.dop)===String(dop));
+    return {
+      dop,
+      agencia: info ? info.agencia : "—",
+      resp: info ? info.resp : "—",
+      hoje: ultimo ? num(ultimo.valor) : 0,
+      total30: total
+    };
+  }).sort((a,b)=>b.total30-a.total30);
+
+  const el = document.getElementById("table-historico");
+  if(!el) return;
+  if(!linhas.length){
+    el.innerHTML = "";
+    el.parentElement.innerHTML = '<div class="empty-state">Sem dados de histórico no período.</div>';
+    return;
+  }
+
+  const thead = "<thead><tr><th>DOP</th><th>Agência</th><th>Responsável</th><th>Hoje</th><th>Total (30 dias)</th></tr></thead>";
+  const tbody = "<tbody>" + linhas.map(l=>`
+    <tr onclick="selecionarHistoricoDop(${JSON.stringify(l.dop)})" class="${String(l.dop)===String(HIST_SELECTED_DOP)?'row-selected':''}">
+      <td class="dop-strong">${l.dop}</td>
+      <td>${l.agencia}</td>
+      <td>${l.resp}</td>
+      <td>${l.hoje.toLocaleString("pt-BR")}</td>
+      <td>${l.total30.toLocaleString("pt-BR")}</td>
+    </tr>`).join("") + "</tbody>";
+  el.innerHTML = thead + tbody;
+
+  if(linhas.length){
+    const aindaExiste = linhas.some(l=>String(l.dop)===String(HIST_SELECTED_DOP));
+    selecionarHistoricoDop(aindaExiste ? HIST_SELECTED_DOP : linhas[0].dop);
+  }
+}
+
+function selecionarHistoricoDop(dop){
+  HIST_SELECTED_DOP = dop;
+  const porDop = historicoPorDop();
+  const serie = porDop[dop] || [];
+  const info = DATA.find(d=>String(d.dop)===String(dop));
+
+  document.querySelectorAll("#table-historico tbody tr").forEach(tr=> tr.classList.remove("row-selected"));
+  const rowEl = [...document.querySelectorAll("#table-historico tbody tr")].find(tr=>tr.firstChild && tr.firstChild.textContent===String(dop));
+  if(rowEl) rowEl.classList.add("row-selected");
+
+  const card = document.getElementById("historico-chart-card");
+  const title = document.getElementById("historico-chart-title");
+  if(card) card.style.display = "block";
+  if(title) title.textContent = "Evolução diária — " + (info ? info.agencia : ("DOP " + dop)) + " (DOP " + dop + ")";
+  drawLineChart("historico-chart", serie.map(h=>({label: fmtDateShort(h.data), value: num(h.valor)})));
+}
+
+function fmtDateShort(iso){
+  const d = new Date(iso);
+  if(isNaN(d)) return iso;
+  return d.toLocaleDateString("pt-BR", {day:"2-digit", month:"2-digit"});
+}
+
+// Gráfico de linha simples em SVG puro (sem lib externa), no mesmo estilo
+// visual do resto do painel — usa as mesmas variáveis de tema (funciona em
+// modo claro e escuro).
+function drawLineChart(svgId, points){
+  const svg = document.getElementById(svgId);
+  if(!svg) return;
+  const W = 900, H = 220, padL = 46, padR = 16, padT = 16, padB = 30;
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+
+  if(!points.length){
+    svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--text-muted)" font-size="12">Sem dados no período.</text>`;
+    return;
+  }
+
+  const values = points.map(p=>p.value);
+  const maxV = Math.max(...values, 1);
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const stepX = points.length>1 ? innerW/(points.length-1) : 0;
+
+  const xAt = i => padL + stepX*i;
+  const yAt = v => padT + innerH - (v/maxV)*innerH;
+
+  let grid = "";
+  const steps = 4;
+  for(let s=0; s<=steps; s++){
+    const v = maxV * s/steps;
+    const y = yAt(v);
+    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="var(--grid)" stroke-width="1"/>`;
+    grid += `<text x="${padL-8}" y="${y+3}" text-anchor="end" font-size="10" fill="var(--text-muted)">${Math.round(v).toLocaleString("pt-BR")}</text>`;
+  }
+
+  let path = "", area = `M ${xAt(0)} ${yAt(0)} `;
+  points.forEach((p,i)=>{
+    const x = xAt(i), y = yAt(p.value);
+    path += (i===0?"M ":"L ") + x + " " + y + " ";
+    area += "L " + x + " " + y + " ";
+  });
+  area += `L ${xAt(points.length-1)} ${yAt(0)} Z`;
+
+  let dots = "", labels = "";
+  const labelEvery = Math.max(1, Math.ceil(points.length/8));
+  points.forEach((p,i)=>{
+    const x = xAt(i), y = yAt(p.value);
+    dots += `<circle cx="${x}" cy="${y}" r="3" fill="var(--brand)"/>`;
+    if(i===0 || i===points.length-1 || i%labelEvery===0){
+      labels += `<text x="${x}" y="${H-8}" text-anchor="middle" font-size="10" fill="var(--text-muted)">${p.label}</text>`;
+    }
+  });
+
+  svg.innerHTML = grid +
+    `<path d="${area}" fill="var(--brand)" opacity="0.10"/>` +
+    `<path d="${path}" fill="none" stroke="var(--brand)" stroke-width="2"/>` +
+    dots + labels;
+}
+
+const histRefreshBtn = document.getElementById("historico-refresh");
+if(histRefreshBtn) histRefreshBtn.addEventListener("click", ()=> loadHistorico());
 
 function filtered(){
   return DATA.filter(d =>
@@ -512,6 +676,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     item.classList.add("active");
     document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
     document.getElementById("sec-"+item.dataset.section).classList.add("active");
+    if(item.dataset.section === "historico" && !HIST_LOADED){ loadHistorico(); }
   });
 });
 document.querySelectorAll("[data-goto]").forEach(el=>{
