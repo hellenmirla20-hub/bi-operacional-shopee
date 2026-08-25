@@ -172,6 +172,7 @@ let HIST_LOADED = false;
 let HIST_SELECTED_DOP = null;
 let HIST_MODE = "dia"; // "dia" | "semana"
 let HIST_SELECTED_PERIOD = null; // chave do dia (YYYY-MM-DD) ou da semana, conforme HIST_MODE
+let HIST_SHOW_ALL = false; // false = só Top 10, true = lista completa (toggle "Ver todas")
 
 async function loadHistorico(){
   const tableEl = document.getElementById("table-historico");
@@ -297,28 +298,59 @@ function renderHistoricoRanking(){
     };
   }).sort((a,b)=>b.valor-a.valor);
 
-  const ranking = rankingCompleto.slice(0,10);
+  // Por padrão só o Top 10 (pra não repetir aquele scroll gigante da
+  // página inteira); "Ver todas" alterna pra lista completa, com um
+  // scroll PRÓPRIO e limitado, só dentro do card — não força a página
+  // toda a rolar de novo.
+  const ranking = HIST_SHOW_ALL ? rankingCompleto : rankingCompleto.slice(0,10);
 
   const el = document.getElementById("table-historico");
   if(!el) return;
-  if(!ranking.length){
+  if(!rankingCompleto.length){
     el.innerHTML = '<div class="empty-state">Sem dados de histórico para o período selecionado.</div>';
     return;
   }
 
-  const maxValor = Math.max(...ranking.map(l=>l.valor), 1);
+  // Escala das barras sempre pelo maior valor do período inteiro (não só
+  // do que está visível), pra não "pular" de tamanho ao expandir/recolher.
+  const maxValor = Math.max(...rankingCompleto.map(l=>l.valor), 1);
 
-  el.innerHTML = ranking.map((l,i)=>`
-    <div class="hist-rank-row${String(l.dop)===String(HIST_SELECTED_DOP)?' row-selected':''}" data-dop="${l.dop}" onclick="selecionarHistoricoDop(${JSON.stringify(l.dop)})">
+  // IMPORTANTE: nada de onclick="...(${JSON.stringify(l.dop)})" aqui — como
+  // o DOP vem como string, JSON.stringify devolve algo como "7990" (com
+  // aspas duplas dentro), e isso quebra o atributo onclick="..." que já usa
+  // aspas duplas por fora (o HTML fecha o atributo na primeira aspas que
+  // encontra). O clique funcionava só na 1ª linha (chamada direto via JS,
+  // não pelo onclick) e falhava silenciosamente em todas as outras. Por
+  // isso agora usamos só data-dop + addEventListener, sem montar JS dentro
+  // do HTML.
+  const linhas = ranking.map((l,i)=>`
+    <div class="hist-rank-row${String(l.dop)===String(HIST_SELECTED_DOP)?' row-selected':''}" data-dop="${l.dop}" title="Clique para ver a evolução de ${l.agencia}">
       <div class="rank-num">${i+1}</div>
-      <div class="hist-rank-label" title="${l.agencia} — DOP ${l.dop}">${l.agencia}<span class="hist-rank-sub">DOP ${l.dop} · ${l.resp}</span></div>
+      <div class="hist-rank-label">${l.agencia}<span class="hist-rank-sub">DOP ${l.dop} · ${l.resp}</span></div>
       <div class="hbar-track"><div class="hbar-fill" style="width:${(l.valor/maxValor*100).toFixed(1)}%;background:var(--brand)"></div></div>
       <div class="hist-rank-val">${l.valor.toLocaleString("pt-BR")}</div>
       <div class="hist-rank-pct">${pct0(l.pct)}</div>
     </div>`).join("");
 
+  const toggle = rankingCompleto.length > 10
+    ? `<div class="hist-rank-toggle" data-action="toggle-show-all">${HIST_SHOW_ALL ? "Ver só Top 10" : `Ver todas as ${rankingCompleto.length} agências`}</div>`
+    : "";
+
+  el.innerHTML = `<div class="hist-rank-rows${HIST_SHOW_ALL ? " hist-rank-rows-scroll" : ""}">${linhas}</div>${toggle}`;
+
+  el.querySelectorAll(".hist-rank-row").forEach(row=>{
+    row.addEventListener("click", ()=> selecionarHistoricoDop(row.dataset.dop));
+  });
+  const toggleEl = el.querySelector('[data-action="toggle-show-all"]');
+  if(toggleEl) toggleEl.addEventListener("click", toggleHistoricoShowAll);
+
   const aindaExiste = ranking.some(l=>String(l.dop)===String(HIST_SELECTED_DOP));
   selecionarHistoricoDop(aindaExiste ? HIST_SELECTED_DOP : ranking[0].dop);
+}
+
+function toggleHistoricoShowAll(){
+  HIST_SHOW_ALL = !HIST_SHOW_ALL;
+  renderHistoricoRanking();
 }
 
 function selecionarHistoricoDop(dop){
