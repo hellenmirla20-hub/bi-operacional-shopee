@@ -175,12 +175,13 @@ let HIST_SELECTED_PERIOD = null; // chave do dia (YYYY-MM-DD) ou da semana, conf
 
 async function loadHistorico(){
   const tableEl = document.getElementById("table-historico");
-  if(tableEl) tableEl.innerHTML = '<tbody><tr><td style="padding:14px;color:var(--text-muted)">Carregando histórico…</td></tr></tbody>';
+  if(tableEl) tableEl.innerHTML = '<div class="empty-state">Carregando histórico… (pode levar até um minuto, a base é grande)</div>';
   try{
     const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
-    // Timeout maior que o dos dados principais: a aba "Dados por Dia" tem
-    // dezenas de milhares de linhas, então essa busca pode demorar mais.
-    const json = await fetchViaIframe(API_URL + sep + "tipo=historico", 45000);
+    // Timeout bem maior que o dos dados principais: a aba "Dados por Dia" tem
+    // quase 100 mil linhas — confirmado no log do Apps Script que a busca
+    // pode levar uns 56s. Damos bastante folga acima disso.
+    const json = await fetchViaIframe(API_URL + sep + "tipo=historico", 90000);
     HIST_DATA = Array.isArray(json) ? json : (json.historico || []);
     HIST_LOADED = true;
     HIST_SELECTED_PERIOD = null;
@@ -188,10 +189,7 @@ async function loadHistorico(){
     renderHistoricoRanking();
   } catch(err){
     console.error(err);
-    if(tableEl){
-      tableEl.innerHTML = "";
-      tableEl.parentElement.innerHTML = '<div class="empty-state">Não foi possível carregar o histórico agora (' + err.message + ').</div>';
-    }
+    if(tableEl) tableEl.innerHTML = '<div class="empty-state">Não foi possível carregar o histórico agora (' + err.message + ').</div>';
   }
 }
 
@@ -266,8 +264,10 @@ if(histPeriodSelect) histPeriodSelect.addEventListener("change", e=>{
 });
 
 // Ranking Top 10 do período selecionado (um dia específico, ou a soma da
-// semana selecionada), com % de impacto = pós-fechamento / inbound total
-// da agência naquele período.
+// semana selecionada). "% Impacto" = fatia dessa agência dentro do total
+// de pós-fechamento de TODAS as agências no período (não o total da
+// própria agência) — mesma lógica da planilha "INBOUND APOS FECHAMENTO"
+// que serviu de referência pro visual deste ranking.
 function renderHistoricoRanking(){
   const escopo = historicoFiltradoPorEscopo();
 
@@ -277,41 +277,45 @@ function renderHistoricoRanking(){
 
   const porDopPeriodo = {};
   linhasPeriodo.forEach(h=>{
-    if(!porDopPeriodo[h.dop]) porDopPeriodo[h.dop] = { valor:0, inboundTotal:0 };
-    porDopPeriodo[h.dop].valor += num(h.valor);
-    porDopPeriodo[h.dop].inboundTotal += num(h.inboundTotal);
+    if(!porDopPeriodo[h.dop]) porDopPeriodo[h.dop] = 0;
+    porDopPeriodo[h.dop] += num(h.valor);
   });
 
-  const ranking = Object.keys(porDopPeriodo).map(dop=>{
+  // Total do período = soma de TODAS as agências (não só o Top 10), pra
+  // o % de cada agência refletir o peso real dela no total do período.
+  const totalPeriodo = Object.values(porDopPeriodo).reduce((a,b)=>a+b, 0);
+
+  const rankingCompleto = Object.keys(porDopPeriodo).map(dop=>{
     const info = DATA.find(d=>String(d.dop)===String(dop));
-    const { valor, inboundTotal } = porDopPeriodo[dop];
+    const valor = porDopPeriodo[dop];
     return {
       dop,
       agencia: info ? info.agencia : "—",
       resp: info ? info.resp : "—",
       valor,
-      pct: inboundTotal > 0 ? (valor/inboundTotal) : 0
+      pct: totalPeriodo > 0 ? (valor/totalPeriodo) : 0
     };
-  }).sort((a,b)=>b.valor-a.valor).slice(0,10);
+  }).sort((a,b)=>b.valor-a.valor);
+
+  const ranking = rankingCompleto.slice(0,10);
 
   const el = document.getElementById("table-historico");
   if(!el) return;
   if(!ranking.length){
-    el.innerHTML = "";
-    el.parentElement.innerHTML = '<div class="empty-state">Sem dados de histórico para o período selecionado.</div>';
+    el.innerHTML = '<div class="empty-state">Sem dados de histórico para o período selecionado.</div>';
     return;
   }
 
-  const thead = "<thead><tr><th>DOP</th><th>Agência</th><th>Responsável</th><th>Pós-Fechamento</th><th>% Impacto</th></tr></thead>";
-  const tbody = "<tbody>" + ranking.map(l=>`
-    <tr onclick="selecionarHistoricoDop(${JSON.stringify(l.dop)})" class="${String(l.dop)===String(HIST_SELECTED_DOP)?'row-selected':''}">
-      <td class="dop-strong">${l.dop}</td>
-      <td>${l.agencia}</td>
-      <td>${l.resp}</td>
-      <td>${l.valor.toLocaleString("pt-BR")}</td>
-      <td>${pct0(l.pct)}</td>
-    </tr>`).join("") + "</tbody>";
-  el.innerHTML = thead + tbody;
+  const maxValor = Math.max(...ranking.map(l=>l.valor), 1);
+
+  el.innerHTML = ranking.map((l,i)=>`
+    <div class="hist-rank-row${String(l.dop)===String(HIST_SELECTED_DOP)?' row-selected':''}" data-dop="${l.dop}" onclick="selecionarHistoricoDop(${JSON.stringify(l.dop)})">
+      <div class="rank-num">${i+1}</div>
+      <div class="hist-rank-label" title="${l.agencia} — DOP ${l.dop}">${l.agencia}<span class="hist-rank-sub">DOP ${l.dop} · ${l.resp}</span></div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:${(l.valor/maxValor*100).toFixed(1)}%;background:var(--brand)"></div></div>
+      <div class="hist-rank-val">${l.valor.toLocaleString("pt-BR")}</div>
+      <div class="hist-rank-pct">${pct0(l.pct)}</div>
+    </div>`).join("");
 
   const aindaExiste = ranking.some(l=>String(l.dop)===String(HIST_SELECTED_DOP));
   selecionarHistoricoDop(aindaExiste ? HIST_SELECTED_DOP : ranking[0].dop);
@@ -323,8 +327,8 @@ function selecionarHistoricoDop(dop){
   const serie = porDop[dop] || [];
   const info = DATA.find(d=>String(d.dop)===String(dop));
 
-  document.querySelectorAll("#table-historico tbody tr").forEach(tr=> tr.classList.remove("row-selected"));
-  const rowEl = [...document.querySelectorAll("#table-historico tbody tr")].find(tr=>tr.firstChild && tr.firstChild.textContent===String(dop));
+  document.querySelectorAll("#table-historico .hist-rank-row").forEach(row=> row.classList.remove("row-selected"));
+  const rowEl = [...document.querySelectorAll("#table-historico .hist-rank-row")].find(row=>row.dataset.dop===String(dop));
   if(rowEl) rowEl.classList.add("row-selected");
 
   const card = document.getElementById("historico-chart-card");
