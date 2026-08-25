@@ -175,6 +175,7 @@ let HIST_MODE = "dia"; // "dia" | "semana"
 let HIST_SELECTED_PERIOD = null; // chave do dia (YYYY-MM-DD) ou da semana, conforme HIST_MODE
 let HIST_SHOW_ALL = false; // false = só Top 10, true = lista completa (toggle "Ver todas")
 let HIST_RANKING_COMPLETO = []; // último ranking calculado (sem corte de Top 10) — usado pela busca por DOP
+let HIST_DOP_FILTRO = null; // quando setado (busca por DOP confirmada), a lista mostra só esse DOP
 
 async function loadHistorico(){
   const tableEl = document.getElementById("table-historico");
@@ -308,14 +309,48 @@ function renderHistoricoRanking(){
 
   HIST_RANKING_COMPLETO = rankingCompleto;
 
+  const el = document.getElementById("table-historico");
+  if(!el) return;
+
+  // Busca por DOP confirmada (HIST_DOP_FILTRO setado em buscarHistoricoDop):
+  // mostra SÓ essa agência, em vez da lista inteira — com um link pra
+  // voltar ao ranking completo.
+  if(HIST_DOP_FILTRO){
+    const posicao = rankingCompleto.findIndex(l=>String(l.dop)===String(HIST_DOP_FILTRO));
+    const voltar = '<div class="hist-rank-toggle" data-action="clear-dop-filter">← Ver ranking completo</div>';
+
+    if(posicao < 0){
+      el.innerHTML = '<div class="empty-state">DOP ' + HIST_DOP_FILTRO + ' não recebeu pacotes pós-fechamento nesse período/filtro.</div>' + voltar;
+      const clearEl1 = el.querySelector('[data-action="clear-dop-filter"]');
+      if(clearEl1) clearEl1.addEventListener("click", limparBuscaHistoricoDop);
+      return;
+    }
+
+    const l = rankingCompleto[posicao];
+    const maxValorFiltro = Math.max(...rankingCompleto.map(x=>x.valor), 1);
+    const linha = `
+      <div class="hist-rank-row row-selected" data-dop="${l.dop}">
+        <div class="rank-num">${posicao+1}</div>
+        <div class="hist-rank-label">${l.agencia}<span class="hist-rank-sub">DOP ${l.dop} · ${l.resp}</span></div>
+        <div class="hbar-track"><div class="hbar-fill" style="width:${(l.valor/maxValorFiltro*100).toFixed(1)}%;background:var(--brand)"></div></div>
+        <div class="hist-rank-val">${l.valor.toLocaleString("pt-BR")}</div>
+        <div class="hist-rank-pct">${pct0(l.pct)}</div>
+      </div>`;
+
+    el.innerHTML = '<div class="hist-rank-rows">' + linha + '</div>' + voltar;
+    const clearEl = el.querySelector('[data-action="clear-dop-filter"]');
+    if(clearEl) clearEl.addEventListener("click", limparBuscaHistoricoDop);
+
+    selecionarHistoricoDop(l.dop);
+    return;
+  }
+
   // Por padrão só o Top 10 (pra não repetir aquele scroll gigante da
   // página inteira); "Ver todas" alterna pra lista completa, com um
   // scroll PRÓPRIO e limitado, só dentro do card — não força a página
   // toda a rolar de novo.
   const ranking = HIST_SHOW_ALL ? rankingCompleto : rankingCompleto.slice(0,10);
 
-  const el = document.getElementById("table-historico");
-  if(!el) return;
   if(!rankingCompleto.length){
     el.innerHTML = '<div class="empty-state">Sem dados de histórico para o período selecionado.</div>';
     return;
@@ -365,15 +400,15 @@ function toggleHistoricoShowAll(){
 
 // Busca rápida por número de DOP no ranking (útil com centenas de
 // agências, sem precisar clicar em "Ver todas" e catar na mão). Aceita o
-// número exato ou o começo dele; se achar, expande a lista (se precisar),
-// seleciona a linha (destaca + desenha o gráfico) e rola até ela.
+// número exato ou o começo dele; se achar, a lista passa a mostrar SÓ essa
+// agência (HIST_DOP_FILTRO), com um link "Ver ranking completo" pra voltar.
 function buscarHistoricoDop(){
   const input = document.getElementById("historico-dop-input");
   const msgEl = document.getElementById("historico-dop-search-msg");
   if(!input || !msgEl) return;
 
   const termo = input.value.trim();
-  if(!termo){ msgEl.style.display = "none"; return; }
+  if(!termo){ msgEl.style.display = "none"; HIST_DOP_FILTRO = null; renderHistoricoRanking(); return; }
 
   const encontrado = HIST_RANKING_COMPLETO.find(l=>String(l.dop)===termo)
     || HIST_RANKING_COMPLETO.find(l=>String(l.dop).startsWith(termo));
@@ -381,18 +416,26 @@ function buscarHistoricoDop(){
   if(!encontrado){
     msgEl.style.display = "block";
     msgEl.textContent = 'Nenhuma agência com DOP "' + termo + '" no período/filtro atual.';
+    HIST_DOP_FILTRO = null;
+    renderHistoricoRanking();
     return;
   }
 
   msgEl.style.display = "none";
   HIST_SELECTED_DOP = encontrado.dop;
-  if(!HIST_SHOW_ALL) HIST_SHOW_ALL = true;
+  HIST_DOP_FILTRO = encontrado.dop;
   renderHistoricoRanking();
+}
 
-  requestAnimationFrame(()=>{
-    const rowEl = document.querySelector('#table-historico .hist-rank-row[data-dop="' + CSS.escape(String(encontrado.dop)) + '"]');
-    if(rowEl) rowEl.scrollIntoView({behavior:"smooth", block:"center"});
-  });
+// Limpa a busca por DOP e volta a mostrar o ranking inteiro (Top 10 / Ver
+// todas) — acionado pelo link "← Ver ranking completo".
+function limparBuscaHistoricoDop(){
+  const input = document.getElementById("historico-dop-input");
+  const msgEl = document.getElementById("historico-dop-search-msg");
+  if(input) input.value = "";
+  if(msgEl) msgEl.style.display = "none";
+  HIST_DOP_FILTRO = null;
+  renderHistoricoRanking();
 }
 
 const histDopInput = document.getElementById("historico-dop-input");
@@ -404,6 +447,7 @@ if(histDopInput){
     if(!histDopInput.value.trim()){
       const msgEl = document.getElementById("historico-dop-search-msg");
       if(msgEl) msgEl.style.display = "none";
+      if(HIST_DOP_FILTRO){ HIST_DOP_FILTRO = null; renderHistoricoRanking(); }
     }
   });
 }
