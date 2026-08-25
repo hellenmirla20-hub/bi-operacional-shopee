@@ -291,6 +291,9 @@ function renderHistoricoRanking(){
   // o % de cada agência refletir o peso real dela no total do período.
   const totalPeriodo = Object.values(porDopPeriodo).reduce((a,b)=>a+b, 0);
 
+  // Só entra no ranking quem realmente recebeu pacote depois do fechamento
+  // nesse período (valor > 0) — agência zerada não é "ranking", é ruído
+  // (e inflava a lista "Ver todas" com dezenas de linhas sem barra nenhuma).
   const rankingCompleto = Object.keys(porDopPeriodo).map(dop=>{
     const info = DATA.find(d=>String(d.dop)===String(dop));
     const valor = porDopPeriodo[dop];
@@ -301,7 +304,7 @@ function renderHistoricoRanking(){
       valor,
       pct: totalPeriodo > 0 ? (valor/totalPeriodo) : 0
     };
-  }).sort((a,b)=>b.valor-a.valor);
+  }).filter(l=>l.valor > 0).sort((a,b)=>b.valor-a.valor);
 
   HIST_RANKING_COMPLETO = rankingCompleto;
 
@@ -418,7 +421,7 @@ function selecionarHistoricoDop(dop){
   const card = document.getElementById("historico-chart-card");
   const title = document.getElementById("historico-chart-title");
   if(card) card.style.display = "block";
-  if(title) title.textContent = "Evolução diária (últimos 30 dias) — " + (info ? info.agencia : ("DOP " + dop)) + " (DOP " + dop + ")";
+  if(title) title.textContent = "Evolução diária (últimos 3 meses) — " + (info ? info.agencia : ("DOP " + dop)) + " (DOP " + dop + ")";
   drawLineChart("historico-chart", serie.map(h=>({label: fmtDateShort(h.data), value: num(h.valor)})));
 }
 
