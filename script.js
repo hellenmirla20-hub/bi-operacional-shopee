@@ -174,6 +174,7 @@ let HIST_SELECTED_DOP = null;
 let HIST_MODE = "dia"; // "dia" | "semana"
 let HIST_SELECTED_PERIOD = null; // chave do dia (YYYY-MM-DD) ou da semana, conforme HIST_MODE
 let HIST_SHOW_ALL = false; // false = só Top 10, true = lista completa (toggle "Ver todas")
+let HIST_RANKING_COMPLETO = []; // último ranking calculado (sem corte de Top 10) — usado pela busca por DOP
 
 async function loadHistorico(){
   const tableEl = document.getElementById("table-historico");
@@ -195,12 +196,15 @@ async function loadHistorico(){
   }
 }
 
-// Só considera, no histórico, os DOPs que já existem na base do painel
-// (agências sob gestão de Hellen/Vitor) — a aba "Dados por Dia" tem
-// registros de muitas outras agências fora desse escopo, que só
-// poluiriam o ranking (e deixavam a lista enorme).
+// Só considera, no histórico, os DOPs que estão dentro do escopo ATUAL —
+// ou seja, já passando pelos filtros do topo (Responsável, Estação,
+// Sub-Regional...). Antes usava DATA (a base inteira, sem filtro nenhum),
+// por isso escolher uma Estação lá em cima não mudava nada aqui. A aba
+// "Dados por Dia" também tem registros de fora da sua carteira, que esse
+// mesmo filtro já deixa de fora.
 function historicoFiltradoPorEscopo(){
-  return HIST_DATA.filter(h => DATA.some(d=>String(d.dop)===String(h.dop)));
+  const escopoAtual = filtered();
+  return HIST_DATA.filter(h => escopoAtual.some(d=>String(d.dop)===String(h.dop)));
 }
 
 // Agrupa o histórico (já filtrado pro escopo) por DOP, cada série
@@ -299,6 +303,8 @@ function renderHistoricoRanking(){
     };
   }).sort((a,b)=>b.valor-a.valor);
 
+  HIST_RANKING_COMPLETO = rankingCompleto;
+
   // Por padrão só o Top 10 (pra não repetir aquele scroll gigante da
   // página inteira); "Ver todas" alterna pra lista completa, com um
   // scroll PRÓPRIO e limitado, só dentro do card — não força a página
@@ -352,6 +358,51 @@ function renderHistoricoRanking(){
 function toggleHistoricoShowAll(){
   HIST_SHOW_ALL = !HIST_SHOW_ALL;
   renderHistoricoRanking();
+}
+
+// Busca rápida por número de DOP no ranking (útil com centenas de
+// agências, sem precisar clicar em "Ver todas" e catar na mão). Aceita o
+// número exato ou o começo dele; se achar, expande a lista (se precisar),
+// seleciona a linha (destaca + desenha o gráfico) e rola até ela.
+function buscarHistoricoDop(){
+  const input = document.getElementById("historico-dop-input");
+  const msgEl = document.getElementById("historico-dop-search-msg");
+  if(!input || !msgEl) return;
+
+  const termo = input.value.trim();
+  if(!termo){ msgEl.style.display = "none"; return; }
+
+  const encontrado = HIST_RANKING_COMPLETO.find(l=>String(l.dop)===termo)
+    || HIST_RANKING_COMPLETO.find(l=>String(l.dop).startsWith(termo));
+
+  if(!encontrado){
+    msgEl.style.display = "block";
+    msgEl.textContent = 'Nenhuma agência com DOP "' + termo + '" no período/filtro atual.';
+    return;
+  }
+
+  msgEl.style.display = "none";
+  HIST_SELECTED_DOP = encontrado.dop;
+  if(!HIST_SHOW_ALL) HIST_SHOW_ALL = true;
+  renderHistoricoRanking();
+
+  requestAnimationFrame(()=>{
+    const rowEl = document.querySelector('#table-historico .hist-rank-row[data-dop="' + CSS.escape(String(encontrado.dop)) + '"]');
+    if(rowEl) rowEl.scrollIntoView({behavior:"smooth", block:"center"});
+  });
+}
+
+const histDopInput = document.getElementById("historico-dop-input");
+if(histDopInput){
+  histDopInput.addEventListener("keydown", e=>{
+    if(e.key === "Enter"){ e.preventDefault(); buscarHistoricoDop(); }
+  });
+  histDopInput.addEventListener("input", ()=>{
+    if(!histDopInput.value.trim()){
+      const msgEl = document.getElementById("historico-dop-search-msg");
+      if(msgEl) msgEl.style.display = "none";
+    }
+  });
 }
 
 function selecionarHistoricoDop(dop){
@@ -595,7 +646,18 @@ function renderSemColetaTable(rows){
     .slice(0,8)
     .map(d=> Object.assign({}, d, { ultimaColetaFmt: fmtDate(d.ultimaColeta) }));
   const el = document.getElementById("table-sem-coleta");
-  if(!withAging.length){ el.innerHTML = ""; el.parentElement.innerHTML = '<div class="empty-state">Todas as agências coletaram hoje.</div>'; return; }
+  if(!el) return;
+  // NUNCA usar el.parentElement.innerHTML aqui — isso apaga o próprio elemento
+  // #table-sem-coleta do DOM (ele é filho do parentElement substituído), e na
+  // próxima vez que essa função rodar (auto-refresh, filtro mudando etc.)
+  // document.getElementById volta null e quebra a atualização inteira do
+  // painel silenciosamente. E como #table-sem-coleta é um <table>, um <div>
+  // solto como innerHTML dele é HTML inválido (o navegador "foster-parenta"
+  // pra fora da tabela) — por isso a mensagem vai numa <td>, não numa <div>.
+  if(!withAging.length){
+    el.innerHTML = '<tbody><tr><td colspan="' + SEM_COLETA_COLS.length + '" class="empty-state">Todas as agências coletaram hoje.</td></tr></tbody>';
+    return;
+  }
   const thead = "<thead><tr>"+SEM_COLETA_COLS.map(c=>`<th>${c.l}</th>`).join("")+"</tr></thead>";
   const tbody = "<tbody>"+withAging.map(d=>{
     return "<tr onclick=\"openDetail("+JSON.stringify(d.dop)+")\">"+SEM_COLETA_COLS.map(c=>{
@@ -774,6 +836,11 @@ function renderAll(){
   const dates = rows.map(d=>d.data).filter(Boolean).sort();
   const last = dates[dates.length-1];
   document.getElementById("update-chip").title = "Última linha atualizada na planilha: " + (last ? fmtDate(last) : "—");
+
+  // Se o Histórico Pós-Fechamento já foi carregado, atualiza o ranking dele
+  // também — os filtros do topo (Responsável, Estação, etc.) devem valer
+  // pra ele igual valem pro resto do painel.
+  if(HIST_LOADED) renderHistoricoRanking();
 }
 
 // nav
