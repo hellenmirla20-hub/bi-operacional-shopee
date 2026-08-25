@@ -156,6 +156,27 @@ table.data tbody tr.row-selected { background: var(--brand-bg); }
 .hbar-label { color:var(--text-secondary); text-overflow:ellipsis; overflow:hidden; white-space:nowrap; }
 .hbar-val { text-align:right; color:var(--text-muted); font-variant-numeric: tabular-nums; }
 
+/* Ranking em barra (Histórico Pós-Fechamento) — mesmo estilo visual do
+   gráfico de barras da planilha "INBOUND APOS FECHAMENTO": nome da
+   agência, barra proporcional ao valor, quantidade e % do total do
+   período lado a lado. */
+.hist-rank-list { display:flex; flex-direction:column; gap:2px; }
+.hist-rank-row { display:grid; grid-template-columns: 22px 176px 1fr 72px 58px; align-items:center; gap:10px; padding:7px 6px; border-radius:8px; cursor:pointer; font-size:12.5px; }
+.hist-rank-row:hover { background: rgba(128,128,128,0.06); }
+.hist-rank-row.row-selected { background: var(--brand-bg); }
+.hist-rank-label { color:var(--text-secondary); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hist-rank-sub { display:block; font-weight:400; font-size:10px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hist-rank-val { text-align:right; color:var(--text-primary); font-weight:700; font-variant-numeric: tabular-nums; white-space:nowrap; }
+.hist-rank-pct { text-align:right; color:var(--brand); font-weight:700; font-variant-numeric: tabular-nums; white-space:nowrap; }
+@media (max-width:640px){
+  .hist-rank-row { grid-template-columns: 18px 1fr 60px; grid-template-areas: "rank label label" "rank track track" "rank val pct"; row-gap:3px; }
+  .hist-rank-row .rank-num { grid-area:rank; }
+  .hist-rank-row .hist-rank-label { grid-area:label; }
+  .hist-rank-row .hbar-track { grid-area:track; }
+  .hist-rank-row .hist-rank-val { grid-area:val; }
+  .hist-rank-row .hist-rank-pct { grid-area:pct; }
+}
+
 /* Detail search */
 .search-box { display:flex; gap:8px; margin-bottom:14px; }
 .search-box input { flex:1; padding:10px 14px; border-radius:9px; border:1px solid var(--border); background:var(--surface-2); color:var(--text-primary); font-size:13.5px; outline:none; }
