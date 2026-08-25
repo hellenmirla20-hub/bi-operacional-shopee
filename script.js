@@ -27,7 +27,7 @@ const API_URL = "https://script.google.com/a/macros/shopee.com/s/AKfycbyAlO5tzyN
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // busca dados novos a cada 5 minutos
 
 let DATA = [];
-let filters = { resp:"", subreg:"", cidade:"", statuscoleta:"", risco:"" };
+let filters = { resp:"", subreg:"", cidade:"", estacao:"", statuscoleta:"", risco:"" };
 
 function normalizeRows(raw){
   return raw.map(r => ({
@@ -65,14 +65,15 @@ function populateFilters(){
   populateSelect("f-resp", uniq("resp"));
   populateSelect("f-subreg", uniq("subreg"));
   populateSelect("f-cidade", uniq("cidade"));
+  populateSelect("f-estacao", uniq("estacao"));
   populateSelect("f-statuscoleta", uniq("statusColeta"));
   populateSelect("f-risco", uniq("risco"));
-  ["resp","subreg","cidade","statuscoleta","risco"].forEach(k=>{
+  ["resp","subreg","cidade","estacao","statuscoleta","risco"].forEach(k=>{
     if(!document.getElementById("f-"+k).value) filters[k] = "";
   });
 }
 
-["resp","subreg","cidade","statuscoleta","risco"].forEach(k=>{
+["resp","subreg","cidade","estacao","statuscoleta","risco"].forEach(k=>{
   document.getElementById("f-"+k).addEventListener("change", e=>{ filters[k]=e.target.value; renderAll(); });
 });
 
@@ -433,6 +434,7 @@ function filtered(){
     (!filters.resp || d.resp===filters.resp) &&
     (!filters.subreg || d.subreg===filters.subreg) &&
     (!filters.cidade || d.cidade===filters.cidade) &&
+    (!filters.estacao || d.estacao===filters.estacao) &&
     (!filters.statuscoleta || d.statusColeta===filters.statuscoleta) &&
     (!filters.risco || d.risco===filters.risco)
   );
