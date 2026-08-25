@@ -674,8 +674,14 @@ function renderRankLists(rows){
   const byScore = [...rows].sort((a,b)=>a.score-b.score).slice(0,8);
   document.getElementById("rank-score").innerHTML = byScore.map((d,i)=>rankRow(i,d,d.score.toFixed(0), riskClass(d.risco))).join("") || emptyRow();
 
-  const byAtraso = [...rows].sort((a,b)=>b.pctAtrasados-a.pctAtrasados).slice(0,8);
-  document.getElementById("rank-atrasados").innerHTML = byAtraso.map((d,i)=>rankRow(i,d,d.pctAtrasados.toFixed(1)+"%", d.pctAtrasados>=15?"critical":d.pctAtrasados>0?"warning":"good")).join("") || emptyRow();
+  // Maiores ofensores em Losses — ranqueia pelo valor perdido (R$), que é o
+  // que realmente pesa pro negócio (mais direto que quantidade de pacotes).
+  const byLosses = [...rows].sort((a,b)=>b.perdasValor-a.perdasValor).slice(0,8);
+  document.getElementById("rank-losses").innerHTML = byLosses.map((d,i)=>rankRow(
+    i, d,
+    d.perdasValor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}),
+    d.perdasValor>=1000?"critical":d.perdasValor>0?"warning":"good"
+  )).join("") || emptyRow();
 
   const byColeta = [...rows].sort((a,b)=>b.horasSemColeta-a.horasSemColeta).slice(0,8);
   document.getElementById("rank-coleta").innerHTML = byColeta.map((d,i)=>rankRow(i,d,d.horasSemColeta.toFixed(0)+"h", coletaClass(d.statusColeta))).join("") || emptyRow();
