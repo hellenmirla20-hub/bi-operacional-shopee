@@ -566,13 +566,19 @@ function kpiCardsPrimary(rows){
   const semColetaHoje = rows.filter(d=>!d.statusColeta.toUpperCase().includes("COLETOU")).length;
   const fifoMedio = rows.length? rows.reduce((s,d)=>s+d.fifoSemana,0)/rows.length : 0;
   const sdMedio = rows.length? rows.reduce((s,d)=>s+d.sameDaySemana,0)/rows.length : 0;
+  // "Hoje" usa os mesmos flags do dia (FIFO HOJE / SAME DAY) já usados no
+  // Detalhe da Agência — aqui só agregamos a média entre as agências.
+  const fifoHojeMedio = rows.length? rows.reduce((s,d)=>s+d.fifoHojeFlag,0)/rows.length : 0;
+  const sdHojeMedio = rows.length? rows.reduce((s,d)=>s+d.sameDayFlag,0)/rows.length : 0;
   const volOutbound = rows.reduce((s,d)=>s+d.outbound,0);
   const volInbound = rows.reduce((s,d)=>s+d.inbound,0);
   return [
     {label:"Backlog Total (OPS)", value: backlogTotal.toLocaleString("pt-BR"), icon:"📦"},
     {label:"Dops Sem Coleta Hoje", value: semColetaHoje, icon:"🚚", cls: semColetaHoje>0?"warn":""},
     {label:"% FIFO Médio (semana)", value: pct0(fifoMedio), icon:"📈"},
+    {label:"% FIFO Médio (hoje)", value: pct0(fifoHojeMedio), icon:"📅"},
     {label:"% Same Day Médio (semana)", value: pct0(sdMedio), icon:"⚡"},
+    {label:"% Same Day Médio (hoje)", value: pct0(sdHojeMedio), icon:"📅"},
     {label:"Volume Outbound", value: volOutbound.toLocaleString("pt-BR"), icon:"⬆"},
     {label:"Volume Inbound", value: volInbound.toLocaleString("pt-BR"), icon:"⬇"},
   ];
@@ -765,7 +771,9 @@ function rankRow(i,d,val,cls,extra){
 
 const TABLE_COLS = [
   {k:"dop", l:"DOP"}, {k:"agencia", l:"Agência"}, {k:"cidade", l:"Cidade"}, {k:"resp", l:"Responsável"},
-  {k:"backlogOps", l:"Backlog"}, {k:"fifoSemana", l:"% FIFO Semana", fmt:pct0}, {k:"sameDaySemana", l:"% Same Day Semana", fmt:pct0},
+  {k:"backlogOps", l:"Backlog"},
+  {k:"fifoSemana", l:"% FIFO Semana", fmt:pct0}, {k:"fifoHojeFlag", l:"% FIFO Hoje", fmt:pct0},
+  {k:"sameDaySemana", l:"% Same Day Semana", fmt:pct0}, {k:"sameDayFlag", l:"% Same Day Hoje", fmt:pct0},
   {k:"perdasQtd", l:"Pacotes Perdidos"}, {k:"risco", l:"Risco", badge:riskClass}, {k:"statusColeta", l:"Coleta", badge:coletaClass}, {k:"status", l:"Status", badge:riskClass}
 ];
 let sortState = { key:"backlogOps", dir:-1 };
@@ -802,7 +810,9 @@ function renderTable(targetId, rows, cols, sortKeyState){
 const BASE_COLS = [
   {k:"dop", l:"DOP"}, {k:"agencia", l:"Agência"}, {k:"resp", l:"Responsável"}, {k:"cidade", l:"Cidade"}, {k:"estado", l:"Estado"},
   {k:"subreg", l:"Sub-Regional"}, {k:"estacao", l:"Estação"}, {k:"backlog", l:"Backlog"}, {k:"backlogOps", l:"Backlog OPS"},
-  {k:"inbound", l:"Inbound"}, {k:"outbound", l:"Outbound"}, {k:"fifoSemana", l:"% FIFO Semana", fmt:pct0}, {k:"sameDaySemana", l:"% Same Day Semana", fmt:pct0},
+  {k:"inbound", l:"Inbound"}, {k:"outbound", l:"Outbound"},
+  {k:"fifoSemana", l:"% FIFO Semana", fmt:pct0}, {k:"fifoHojeFlag", l:"% FIFO Hoje", fmt:pct0},
+  {k:"sameDaySemana", l:"% Same Day Semana", fmt:pct0}, {k:"sameDayFlag", l:"% Same Day Hoje", fmt:pct0},
   {k:"pctAtrasados", l:"% Atrasados"}, {k:"horasSemColeta", l:"Hs sem coleta"}, {k:"risco", l:"Risco", badge:riskClass},
   {k:"statusColeta", l:"Status Coleta", badge:coletaClass}, {k:"status", l:"Status", badge:riskClass}
 ];
@@ -844,9 +854,9 @@ function renderDetail(d){
     <div class="detail-grid">
       <div class="detail-item"><div class="l">Backlog Total (OPS)</div><div class="v">${d.backlogOps.toLocaleString("pt-BR")}</div></div>
       <div class="detail-item"><div class="l">% FIFO Semana</div><div class="v">${pct0(d.fifoSemana)}</div></div>
+      <div class="detail-item"><div class="l">% FIFO Hoje</div><div class="v">${pct0(d.fifoHojeFlag)}</div></div>
       <div class="detail-item"><div class="l">% Same Day Semana</div><div class="v">${pct0(d.sameDaySemana)}</div></div>
-      <div class="detail-item"><div class="l">Cumpriu FIFO Hoje</div><div class="v" style="font-size:13px">${d.fifoHojeFlag>=1 ? "Sim" : "Não"}</div></div>
-      <div class="detail-item"><div class="l">Cumpriu Same Day Hoje</div><div class="v" style="font-size:13px">${d.sameDayFlag>=1 ? "Sim" : (d.sameDayFlag>0 ? pct0(d.sameDayFlag)+" (parcial)" : "Não")}</div></div>
+      <div class="detail-item"><div class="l">% Same Day Hoje</div><div class="v">${pct0(d.sameDayFlag)}</div></div>
       <div class="detail-item"><div class="l">Inbound / Outbound</div><div class="v">${d.inbound.toLocaleString("pt-BR")} / ${d.outbound.toLocaleString("pt-BR")}</div></div>
       <div class="detail-item"><div class="l">% Atrasados</div><div class="v">${d.pctAtrasados.toFixed(1)}%</div></div>
       <div class="detail-item"><div class="l">Backlog Envelhecido</div><div class="v">${d.backlogEnvelhecido}</div></div>
