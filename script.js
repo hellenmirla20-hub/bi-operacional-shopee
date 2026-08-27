@@ -29,6 +29,18 @@ const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // busca dados novos a cada 5 minutos
 let DATA = [];
 let filters = { resp:"", subreg:"", cidade:"", estacao:"", statuscoleta:"", risco:"" };
 
+// Estado de expansão dos cards "ver todas / ver ranking completo" do Resumo
+// Geral — cada card colapsa para um preview curto por padrão e expande pra
+// lista completa quando o link/botão é clicado (some ao clicar de novo).
+let CURRENT_ROWS = [];
+const expandState = { alerts:false, fifoResumo:false, sdResumo:false };
+function wireExpandToggle(topId, bottomId, stateKey, onToggle){
+  const top = document.getElementById(topId), bottom = document.getElementById(bottomId);
+  const handler = ()=>{ expandState[stateKey] = !expandState[stateKey]; onToggle(); };
+  if(top) top.addEventListener("click", handler);
+  if(bottom) bottom.addEventListener("click", handler);
+}
+
 function normalizeRows(raw){
   return raw.map(r => ({
     dop: r["DOP"], resp: r["RESPONSÁVEL"]||"Não informado", agencia: r["AGÊNCIA"]||r["NOME FANTASIA"]||"—",
@@ -592,12 +604,15 @@ function renderKpis(targetId, cards){
   });
 }
 
+const ALERTS_PREVIEW_COUNT = 8;
 function renderAlerts(rows){
   const el = document.getElementById("alerts-list");
-  const alerts = rows.filter(d=> riskClass(d.risco)==="critical" || d.status.toUpperCase().includes("CRÍT"))
-    .sort((a,b)=>b.horasSemColeta-a.horasSemColeta).slice(0,8);
+  const allAlerts = rows.filter(d=> riskClass(d.risco)==="critical" || d.status.toUpperCase().includes("CRÍT"))
+    .sort((a,b)=>b.horasSemColeta-a.horasSemColeta);
+  const hasMore = allAlerts.length > ALERTS_PREVIEW_COUNT;
+  const alerts = expandState.alerts ? allAlerts : allAlerts.slice(0, ALERTS_PREVIEW_COUNT);
   el.innerHTML = "";
-  if(!alerts.length){ el.innerHTML = '<div class="empty-state">Nenhum alerta crítico no momento.</div>'; return; }
+  if(!alerts.length){ el.innerHTML = '<div class="empty-state">Nenhum alerta crítico no momento.</div>'; }
   alerts.forEach(d=>{
     const ind = alertIndicador(d);
     const row = document.createElement("div");
@@ -611,6 +626,17 @@ function renderAlerts(rows){
     row.onclick = ()=> openDetail(d.dop);
     el.appendChild(row);
   });
+
+  const top = document.getElementById("alerts-toggle-top");
+  const bottom = document.getElementById("alerts-toggle-bottom");
+  const showToggle = hasMore || expandState.alerts;
+  if(top) top.style.display = showToggle ? "" : "none";
+  if(bottom) bottom.style.display = showToggle ? "" : "none";
+  if(top) top.textContent = expandState.alerts ? "Fechar ✕" : "Ver todas";
+  if(bottom){
+    bottom.textContent = expandState.alerts ? "− Fechar" : "+ Ver todas as alertas";
+    bottom.classList.toggle("is-open", expandState.alerts);
+  }
 }
 
 function donut(svgId, legendId, groups, colorFn){
@@ -644,18 +670,36 @@ function groupCount(rows, field, mapClassColor){
 
 function fifoBadgeClass(v){ return v>=0.95?"good":v>=0.85?"warning":"critical"; }
 
+const RESUMO_PREVIEW_COUNT = 5;
+function renderResumoToggle(topId, bottomId, stateKey, defaultLabel, hasMore){
+  const top = document.getElementById(topId);
+  const bottom = document.getElementById(bottomId);
+  const isOpen = expandState[stateKey];
+  const showToggle = hasMore || isOpen;
+  if(top){ top.style.display = showToggle ? "" : "none"; top.textContent = isOpen ? "Fechar ✕" : defaultLabel; }
+  if(bottom){
+    bottom.style.display = showToggle ? "" : "none";
+    bottom.textContent = isOpen ? "− Fechar" : "+ "+defaultLabel;
+    bottom.classList.toggle("is-open", isOpen);
+  }
+}
+
 function renderRankLists(rows){
   const byFifo = [...rows].sort((a,b)=>a.fifoSemana-b.fifoSemana).slice(0,8);
   const fifoHtml = byFifo.map((d,i)=>rankRow(i,d,pct0(d.fifoSemana), fifoBadgeClass(d.fifoSemana))).join("") || emptyRow();
   document.getElementById("rank-fifo").innerHTML = fifoHtml;
   const rankFifoResumo = document.getElementById("rank-fifo-resumo");
-  if(rankFifoResumo) rankFifoResumo.innerHTML = byFifo.slice(0,5).map((d,i)=>rankRow(i,d,pct0(d.fifoSemana), fifoBadgeClass(d.fifoSemana))).join("") || emptyRow();
+  const fifoPreview = expandState.fifoResumo ? byFifo : byFifo.slice(0, RESUMO_PREVIEW_COUNT);
+  if(rankFifoResumo) rankFifoResumo.innerHTML = fifoPreview.map((d,i)=>rankRow(i,d,pct0(d.fifoSemana), fifoBadgeClass(d.fifoSemana))).join("") || emptyRow();
+  renderResumoToggle("fifo-resumo-toggle-top","fifo-resumo-toggle-bottom","fifoResumo","Ver ranking completo", byFifo.length>RESUMO_PREVIEW_COUNT);
 
   const bySameDay = [...rows].sort((a,b)=>a.sameDaySemana-b.sameDaySemana).slice(0,8);
   const sdHtml = bySameDay.map((d,i)=>rankRow(i,d,pct0(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana))).join("") || emptyRow();
   document.getElementById("rank-sameday").innerHTML = sdHtml;
   const rankSdResumo = document.getElementById("rank-sameday-resumo");
-  if(rankSdResumo) rankSdResumo.innerHTML = bySameDay.slice(0,5).map((d,i)=>rankRow(i,d,pct0(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana))).join("") || emptyRow();
+  const sdPreview = expandState.sdResumo ? bySameDay : bySameDay.slice(0, RESUMO_PREVIEW_COUNT);
+  if(rankSdResumo) rankSdResumo.innerHTML = sdPreview.map((d,i)=>rankRow(i,d,pct0(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana))).join("") || emptyRow();
+  renderResumoToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdResumo","Ver ranking completo", bySameDay.length>RESUMO_PREVIEW_COUNT);
 
   // Maiores ofensores em Losses — ranqueia pelo valor perdido (R$), que é o
   // que realmente pesa pro negócio (mais direto que quantidade de pacotes).
@@ -839,6 +883,7 @@ function renderGestaoPills(){
 
 function renderAll(){
   const rows = filtered();
+  CURRENT_ROWS = rows;
 
   renderKpis("kpi-grid", kpiCardsPrimary(rows));
   renderKpis("kpi-grid-extra", kpiCardsSecondary(rows));
@@ -892,6 +937,13 @@ document.querySelectorAll("[data-goto]").forEach(el=>{
     document.querySelector('.nav-item[data-section="'+el.dataset.goto+'"]').click();
   });
 });
+
+// Toggles "ver todas / ver ranking completo" ↔ "fechar" dos cards do Resumo
+// Geral — reaproveita os dados já filtrados (CURRENT_ROWS), sem precisar
+// refazer todo o renderAll().
+wireExpandToggle("alerts-toggle-top","alerts-toggle-bottom","alerts", ()=> renderAlerts(CURRENT_ROWS));
+wireExpandToggle("fifo-resumo-toggle-top","fifo-resumo-toggle-bottom","fifoResumo", ()=> renderRankLists(CURRENT_ROWS));
+wireExpandToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdResumo", ()=> renderRankLists(CURRENT_ROWS));
 
 // theme
 const themeBtn = document.getElementById("theme-toggle");
