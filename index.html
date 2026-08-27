@@ -63,8 +63,8 @@
       <div class="grid2">
         <div class="card">
           <div class="card-head"><div class="card-title">⚠ Alertas — Prioridade</div><div class="card-link" data-goto="rankings">Ver rankings</div></div>
-          <div class="col-head" style="display:grid;grid-template-columns:3px 1.3fr 0.55fr 0.95fr 0.7fr 0.55fr;gap:10px;">
-            <span></span><span>Agência</span><span>DOP</span><span>Indicador</span><span>Valor</span><span>Score</span>
+          <div class="col-head" style="display:grid;grid-template-columns:3px 1.3fr 0.55fr 0.95fr 0.7fr;gap:10px;">
+            <span></span><span>Agência</span><span>DOP</span><span>Indicador</span><span>Valor</span>
           </div>
           <div id="alerts-list"></div>
         </div>
@@ -103,16 +103,12 @@
       </div>
 
       <div class="grid2">
-        <div class="card">
+        <div class="card" style="grid-column:1 / -1">
           <div class="card-head"><div class="card-title">🚛 Distribuição por Status de Coleta</div></div>
           <div class="donut-wrap">
             <svg id="donut-coleta" width="150" height="150" viewBox="0 0 150 150"></svg>
             <div class="legend" id="legend-coleta"></div>
           </div>
-        </div>
-        <div class="card">
-          <div class="card-head"><div class="card-title">📊 Score Operacional médio por Sub-Regional</div></div>
-          <div id="bars-subreg"></div>
         </div>
       </div>
     </div>
@@ -131,7 +127,7 @@
     <!-- RANKINGS -->
     <div class="section" id="sec-rankings">
       <div class="section-title">Rankings</div>
-      <div class="grid3">
+      <div class="grid2">
         <div class="card">
           <div class="card-head"><div class="card-title">Pior % FIFO (semana)</div></div>
           <div id="rank-fifo"></div>
@@ -139,10 +135,6 @@
         <div class="card">
           <div class="card-head"><div class="card-title">Pior % Same Day (semana)</div></div>
           <div id="rank-sameday"></div>
-        </div>
-        <div class="card">
-          <div class="card-head"><div class="card-title">Pior Score Operacional</div></div>
-          <div id="rank-score"></div>
         </div>
       </div>
       <div class="grid2">
