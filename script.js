@@ -680,7 +680,8 @@ function renderRankLists(rows){
   document.getElementById("rank-losses").innerHTML = byLosses.map((d,i)=>rankRow(
     i, d,
     d.perdasValor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}),
-    d.perdasValor>=1000?"critical":d.perdasValor>0?"warning":"good"
+    d.perdasValor>=1000?"critical":d.perdasValor>0?"warning":"good",
+    d.perdasQtd.toLocaleString("pt-BR") + (d.perdasQtd===1?" pacote":" pacotes")
   )).join("") || emptyRow();
 
   const byColeta = [...rows].sort((a,b)=>b.horasSemColeta-a.horasSemColeta).slice(0,8);
@@ -724,10 +725,13 @@ function renderSemColetaTable(rows){
   el.innerHTML = thead+tbody;
 }
 function emptyRow(){ return '<div class="empty-state">Sem dados para os filtros atuais.</div>'; }
-function rankRow(i,d,val,cls){
-  return `<div class="alert-row" style="grid-template-columns:18px 1.6fr 0.9fr;cursor:pointer" onclick="openDetail(${JSON.stringify(d.dop)})">
+function rankRow(i,d,val,cls,extra){
+  const cols = extra!=null ? "18px 1.6fr 0.75fr 0.9fr" : "18px 1.6fr 0.9fr";
+  const extraCol = extra!=null ? `<div style="text-align:right;color:var(--text-muted);font-size:11.5px">${extra}</div>` : "";
+  return `<div class="alert-row" style="grid-template-columns:${cols};cursor:pointer" onclick="openDetail(${JSON.stringify(d.dop)})">
     <div class="rank-num">${i+1}</div>
     <div><div class="alert-name">${d.agencia}</div><div class="alert-sub">DOP ${d.dop} · ${d.cidade}</div></div>
+    ${extraCol}
     <div style="text-align:right"><span class="badge ${cls}"><span class="ic"></span>${val}</span></div>
   </div>`;
 }
