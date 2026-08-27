@@ -62,11 +62,12 @@
 
       <div class="grid2">
         <div class="card">
-          <div class="card-head"><div class="card-title">⚠ Alertas — Prioridade</div><div class="card-link" data-goto="rankings">Ver rankings</div></div>
+          <div class="card-head"><div class="card-title">⚠ Alertas — Prioridade</div><div class="card-link" id="alerts-toggle-top">Ver todas</div></div>
           <div class="col-head" style="display:grid;grid-template-columns:3px 1.3fr 0.55fr 0.95fr 0.7fr;gap:10px;">
             <span></span><span>Agência</span><span>DOP</span><span>Indicador</span><span>Valor</span>
           </div>
           <div id="alerts-list"></div>
+          <div class="card-expand-btn" id="alerts-toggle-bottom">+ Ver todas as alertas</div>
         </div>
         <div class="card">
           <div class="card-head"><div class="card-title">◓ Distribuição por Risco Operacional</div></div>
@@ -79,12 +80,14 @@
 
       <div class="grid2">
         <div class="card">
-          <div class="card-head"><div class="card-title">📉 Ranking — Pior % FIFO (semana)</div><div class="card-link" data-goto="rankings">Ver ranking completo</div></div>
+          <div class="card-head"><div class="card-title">📉 Ranking — Pior % FIFO (semana)</div><div class="card-link" id="fifo-resumo-toggle-top">Ver ranking completo</div></div>
           <div id="rank-fifo-resumo"></div>
+          <div class="card-expand-btn" id="fifo-resumo-toggle-bottom">+ Ver ranking completo</div>
         </div>
         <div class="card">
-          <div class="card-head"><div class="card-title">📉 Ranking — Pior % Same Day (semana)</div><div class="card-link" data-goto="rankings">Ver ranking completo</div></div>
+          <div class="card-head"><div class="card-title">📉 Ranking — Pior % Same Day (semana)</div><div class="card-link" id="sameday-resumo-toggle-top">Ver ranking completo</div></div>
           <div id="rank-sameday-resumo"></div>
+          <div class="card-expand-btn" id="sameday-resumo-toggle-bottom">+ Ver ranking completo</div>
         </div>
       </div>
 
