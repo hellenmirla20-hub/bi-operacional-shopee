@@ -44,7 +44,7 @@ function normalizeRows(raw){
     backlogEnvelhecido: num(r["BACKLOG ENVELHECIDO"]), totalAtrasados: num(r["TOTAL ATRASADOS"]),
     statusColeta: r["STATUS COLETA"]||"—", horasSemColeta: num(r["HORAS SEM COLETA"]),
     agingSemColeta: num(r["AGING SEM COLETA"]), ultimaColeta: r["ULTIMA COLETA"],
-    score: num(r["SCORE OPERACIONAL"]), risco: r["RISCO OPERACIONAL"]||"—",
+    risco: r["RISCO OPERACIONAL"]||"—",
     status: r["STATUS"]||"—", maturacao: r["MATURAÇÃO"]||"—", tevecoleta: r["TEVE_COLETA"]||"—",
     data: r["DATA"]
   }));
@@ -544,7 +544,7 @@ function alertIndicador(d){
   if(d.pctAtrasados >= 15) return {label:"% Atrasados", valor: d.pctAtrasados.toFixed(1)+"%"};
   if(d.backlogEnvelhecido > 0) return {label:"Backlog envelhecido", valor: String(d.backlogEnvelhecido)};
   if(d.backlogOps > 300) return {label:"Backlog Total", valor: d.backlogOps.toLocaleString("pt-BR")};
-  return {label:"Score Operacional", valor: d.score.toFixed(0)};
+  return {label:"Risco Operacional", valor: d.risco};
 }
 
 // Cards principais — mesmo conjunto do painel de agências (backlog, coleta,
@@ -566,16 +566,14 @@ function kpiCardsPrimary(rows){
   ];
 }
 
-// Cards extras — indicadores próprios deste painel operacional (score, risco,
+// Cards extras — indicadores próprios deste painel operacional (risco,
 // atrasados), que não existem no painel de agências.
 function kpiCardsSecondary(rows){
-  const scoreMedio = rows.length? rows.reduce((s,d)=>s+d.score,0)/rows.length : 0;
   const criticos = rows.filter(d=>riskClass(d.risco)==="critical").length;
   const atrasadosMedio = rows.length? rows.reduce((s,d)=>s+d.pctAtrasados,0)/rows.length : 0;
   const perdasQtdTotal = rows.reduce((s,d)=>s+d.perdasQtd,0);
   const perdasValorTotal = rows.reduce((s,d)=>s+d.perdasValor,0);
   return [
-    {label:"Score Operacional Médio", value: scoreMedio.toFixed(0), icon:"🎯"},
     {label:"Agências em Risco Crítico", value: criticos, icon:"🔴", cls: criticos>0?"crit":""},
     {label:"% Atrasados Médio", value: atrasadosMedio.toFixed(1)+"%", icon:"⏱"},
     {label:"Pacotes Perdidos (Total)", value: perdasQtdTotal.toLocaleString("pt-BR"), icon:"📉", cls: perdasQtdTotal>0?"warn":""},
@@ -597,20 +595,19 @@ function renderKpis(targetId, cards){
 function renderAlerts(rows){
   const el = document.getElementById("alerts-list");
   const alerts = rows.filter(d=> riskClass(d.risco)==="critical" || d.status.toUpperCase().includes("CRÍT"))
-    .sort((a,b)=>a.score-b.score).slice(0,8);
+    .sort((a,b)=>b.horasSemColeta-a.horasSemColeta).slice(0,8);
   el.innerHTML = "";
   if(!alerts.length){ el.innerHTML = '<div class="empty-state">Nenhum alerta crítico no momento.</div>'; return; }
   alerts.forEach(d=>{
     const ind = alertIndicador(d);
     const row = document.createElement("div");
     row.className = "alert-row";
-    row.style.gridTemplateColumns = "3px 1.3fr 0.55fr 0.95fr 0.7fr 0.55fr";
+    row.style.gridTemplateColumns = "3px 1.3fr 0.55fr 0.95fr 0.7fr";
     row.innerHTML = `<div class="alert-bar" style="background:var(--critical)"></div>
       <div><div class="alert-name">${d.agencia}</div><div class="alert-sub">${d.cidade}</div></div>
       <div>${d.dop}</div>
       <div>${ind.label}</div>
-      <div>${ind.valor}</div>
-      <div><span class="badge critical"><span class="ic"></span>${d.score.toFixed(0)}</span></div>`;
+      <div>${ind.valor}</div>`;
     row.onclick = ()=> openDetail(d.dop);
     el.appendChild(row);
   });
@@ -645,17 +642,6 @@ function groupCount(rows, field, mapClassColor){
     .sort((a,b)=>b.value-a.value);
 }
 
-function hbars(targetId, groups, maxColor){
-  const el = document.getElementById(targetId);
-  const max = Math.max(...groups.map(g=>g.value), 1);
-  el.innerHTML = groups.map(g=>`
-    <div class="hbar-row">
-      <div class="hbar-label">${g.label}</div>
-      <div class="hbar-track"><div class="hbar-fill" style="width:${(g.value/max*100).toFixed(1)}%;background:${g.color||maxColor}"></div></div>
-      <div class="hbar-val">${typeof g.value === "number" ? g.value.toLocaleString("pt-BR", {maximumFractionDigits:1}) : g.value}</div>
-    </div>`).join("");
-}
-
 function fifoBadgeClass(v){ return v>=0.95?"good":v>=0.85?"warning":"critical"; }
 
 function renderRankLists(rows){
@@ -670,9 +656,6 @@ function renderRankLists(rows){
   document.getElementById("rank-sameday").innerHTML = sdHtml;
   const rankSdResumo = document.getElementById("rank-sameday-resumo");
   if(rankSdResumo) rankSdResumo.innerHTML = bySameDay.slice(0,5).map((d,i)=>rankRow(i,d,pct0(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana))).join("") || emptyRow();
-
-  const byScore = [...rows].sort((a,b)=>a.score-b.score).slice(0,8);
-  document.getElementById("rank-score").innerHTML = byScore.map((d,i)=>rankRow(i,d,d.score.toFixed(0), riskClass(d.risco))).join("") || emptyRow();
 
   // Maiores ofensores em Losses — ranqueia pelo valor perdido (R$), que é o
   // que realmente pesa pro negócio (mais direto que quantidade de pacotes).
@@ -776,7 +759,7 @@ const BASE_COLS = [
   {k:"dop", l:"DOP"}, {k:"agencia", l:"Agência"}, {k:"resp", l:"Responsável"}, {k:"cidade", l:"Cidade"}, {k:"estado", l:"Estado"},
   {k:"subreg", l:"Sub-Regional"}, {k:"estacao", l:"Estação"}, {k:"backlog", l:"Backlog"}, {k:"backlogOps", l:"Backlog OPS"},
   {k:"inbound", l:"Inbound"}, {k:"outbound", l:"Outbound"}, {k:"fifoSemana", l:"% FIFO Semana", fmt:pct0}, {k:"sameDaySemana", l:"% Same Day Semana", fmt:pct0},
-  {k:"pctAtrasados", l:"% Atrasados"}, {k:"horasSemColeta", l:"Hs sem coleta"}, {k:"score", l:"Score"}, {k:"risco", l:"Risco", badge:riskClass},
+  {k:"pctAtrasados", l:"% Atrasados"}, {k:"horasSemColeta", l:"Hs sem coleta"}, {k:"risco", l:"Risco", badge:riskClass},
   {k:"statusColeta", l:"Status Coleta", badge:coletaClass}, {k:"status", l:"Status", badge:riskClass}
 ];
 let baseSortState = { key:"dop", dir:1 };
@@ -828,7 +811,6 @@ function renderDetail(d){
       <div class="detail-item"><div class="l">Status Coleta</div><div class="v" style="font-size:13px">${d.statusColeta}</div></div>
       <div class="detail-item"><div class="l">Horas sem coleta</div><div class="v">${d.horasSemColeta.toFixed(1)}h</div></div>
       <div class="detail-item"><div class="l">Última Coleta</div><div class="v" style="font-size:13px">${fmtDate(d.ultimaColeta)}</div></div>
-      <div class="detail-item"><div class="l">Score Operacional</div><div class="v">${d.score.toFixed(0)}</div></div>
       <div class="detail-item"><div class="l">Maturação</div><div class="v" style="font-size:13px">${d.maturacao}</div></div>
       <div class="detail-item"><div class="l">Teve coleta</div><div class="v" style="font-size:13px">${d.tevecoleta}</div></div>
       <div class="detail-item"><div class="l">Atualizado em</div><div class="v" style="font-size:13px">${fmtDate(d.data)}</div></div>
@@ -872,11 +854,6 @@ function renderAll(){
   if(rest>0) top.push({label:"Outras", value:rest});
   top.forEach((g,i)=> g.color = CATS[i % CATS.length]);
   donut("donut-cidade","legend-cidade", top, null);
-
-  const subregMap = {};
-  rows.forEach(d=>{ (subregMap[d.subreg] = subregMap[d.subreg]||[]).push(d.score); });
-  const subregArr = Object.entries(subregMap).map(([label,arr])=>({label, value: arr.reduce((s,v)=>s+v,0)/arr.length, color:"#2a78d6"})).sort((a,b)=>b.value-a.value);
-  hbars("bars-subreg", subregArr);
 
   renderRankLists(rows);
   renderSemColetaTable(rows);
