@@ -232,10 +232,26 @@ function historicoPorDop(){
   return porDop;
 }
 
+// FIX (01/09/2026): esta função é usada tanto para rotular DIAS
+// (recebe uma string "YYYY-MM-DD", sem horário) quanto para rotular
+// pontos do gráfico de evolução (recebe um ISO completo, com horário).
+// Sem "timeZone: 'UTC'", o toLocaleDateString exibia a data no fuso
+// do NAVEGADOR de quem está vendo o painel. Para uma string
+// "YYYY-MM-DD" (interpretada pelo JS como meia-noite UTC), isso fazia
+// o rótulo "voltar" um dia inteiro em qualquer fuso negativo — como o
+// horário de Brasília (UTC-3) — porque meia-noite UTC já é a noite
+// anterior aqui. Resultado: o seletor "DIA" mostrava, por exemplo,
+// "30/08" no texto para uma opção cujo valor real era "2026-08-31",
+// fazendo o painel exibir os números de segunda-feira como se fossem
+// de domingo. Forçar timeZone: "UTC" faz o rótulo sempre bater com a
+// mesma data (UTC) usada para montar a chave em dateKey(), então o
+// texto exibido nunca mais desalinha do valor selecionado — e não
+// muda em nada os rótulos que já vinham de um ISO com horário (como
+// os do gráfico de evolução), que já caíam no dia certo.
 function fmtDateShort(iso){
   const d = new Date(iso);
   if(isNaN(d)) return iso;
-  return d.toLocaleDateString("pt-BR", {day:"2-digit", month:"2-digit"});
+  return d.toLocaleDateString("pt-BR", {day:"2-digit", month:"2-digit", timeZone:"UTC"});
 }
 function dateKey(iso){
   const d = new Date(iso);
