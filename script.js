@@ -1,9 +1,7 @@
 const CATS = ["#2a78d6","#eb6834","#1baf7a","#eda100","#e87ba4","#008300","#4a3aa7","#e34948"];
-
 function num(v){ return (v===null||v===undefined||isNaN(v)) ? 0 : +v; }
 function pct(v){ return (num(v)*100).toFixed(1)+"%"; }
 function pct0(v){ return (num(v)*100).toFixed(0)+"%"; }
-
 function riskClass(r){
   if(!r) return "warning";
   r = r.toUpperCase();
@@ -18,17 +16,14 @@ function coletaClass(s){
   if(s.includes("3+")) return "critical";
   return "warning";
 }
-
 // normalize rows
 // ==================== FONTE DE DADOS AO VIVO ====================
 // Cole aqui a URL do Web App do Apps Script (Deploy > New deployment > Web app).
 // Veja instruções completas no arquivo DEPLOY.md.
 const API_URL = "https://script.google.com/a/macros/shopee.com/s/AKfycbyAlO5tzyNj2xxOjZDRkT8GNov5h9HwEjaRHOvPypVwYkymldkqCXbY15lSIduc1UNTNQ/exec";
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // busca dados novos a cada 5 minutos
-
 let DATA = [];
 let filters = { resp:"", subreg:"", cidade:"", estacao:"", statuscoleta:"", risco:"" };
-
 // Estado de expansão dos cards "ver todas / ver ranking completo" do Resumo
 // Geral — cada card colapsa para um preview curto por padrão e expande pra
 // lista completa quando o link/botão é clicado (some ao clicar de novo).
@@ -40,7 +35,6 @@ function wireExpandToggle(topId, bottomId, stateKey, onToggle){
   if(top) top.addEventListener("click", handler);
   if(bottom) bottom.addEventListener("click", handler);
 }
-
 function normalizeRows(raw){
   return raw.map(r => ({
     dop: r["DOP"], resp: r["RESPONSÁVEL"]||"Não informado", agencia: r["AGÊNCIA"]||r["NOME FANTASIA"]||"—",
@@ -61,9 +55,7 @@ function normalizeRows(raw){
     data: r["DATA"]
   }));
 }
-
 function uniq(field){ return [...new Set(DATA.map(d=>d[field]).filter(v=>v && v!=="—"))].sort(); }
-
 function populateSelect(id, values){
   const sel = document.getElementById(id);
   const current = sel.value;
@@ -72,7 +64,6 @@ function populateSelect(id, values){
   values.forEach(v=>{ const o=document.createElement("option"); o.value=v; o.textContent=v; sel.appendChild(o); });
   if(values.includes(current)) sel.value = current;
 }
-
 function populateFilters(){
   populateSelect("f-resp", uniq("resp"));
   populateSelect("f-subreg", uniq("subreg"));
@@ -84,18 +75,15 @@ function populateFilters(){
     if(!document.getElementById("f-"+k).value) filters[k] = "";
   });
 }
-
 ["resp","subreg","cidade","estacao","statuscoleta","risco"].forEach(k=>{
   document.getElementById("f-"+k).addEventListener("change", e=>{ filters[k]=e.target.value; renderAll(); });
 });
-
 function setLiveStatus(ok, message){
   const dot = document.getElementById("live-dot");
   const chip = document.getElementById("update-chip");
   dot.classList.toggle("stale", !ok);
   chip.lastChild.textContent = " " + message;
 }
-
 // Busca dados via <iframe> escondido + postMessage, em vez de
 // fetch() ou JSONP. O Web App do Apps Script fica restrito a
 // "Qualquer pessoa dentro da Shopee Mobile" (o Workspace não libera
@@ -147,7 +135,6 @@ function fetchViaIframe(url, timeoutMs){
     document.body.appendChild(iframe);
   });
 }
-
 async function loadData(showOverlay){
   const overlay = document.getElementById("loading-overlay");
   const banner = document.getElementById("error-banner");
@@ -174,9 +161,7 @@ async function loadData(showOverlay){
     overlay.style.display = "none";
   }
 }
-
 document.getElementById("refresh-btn").addEventListener("click", ()=> loadData(true));
-
 // ==================== HISTÓRICO — INBOUND PÓS-FECHAMENTO ====================
 // Carregado sob demanda (só quando a aba "Histórico Pós-Fechamento" é aberta
 // pela primeira vez), pra não pesar a busca automática de 5 em 5 minutos.
@@ -188,7 +173,6 @@ let HIST_SELECTED_PERIOD = null; // chave do dia (YYYY-MM-DD) ou da semana, conf
 let HIST_SHOW_ALL = false; // false = só Top 10, true = lista completa (toggle "Ver todas")
 let HIST_RANKING_COMPLETO = []; // último ranking calculado (sem corte de Top 10) — usado pela busca por DOP
 let HIST_DOP_FILTRO = null; // quando setado (busca por DOP confirmada), a lista mostra só esse DOP
-
 async function loadHistorico(){
   const tableEl = document.getElementById("table-historico");
   if(tableEl) tableEl.innerHTML = '<div class="empty-state">Carregando histórico… (pode levar até um minuto, a base é grande)</div>';
@@ -208,7 +192,6 @@ async function loadHistorico(){
     if(tableEl) tableEl.innerHTML = '<div class="empty-state">Não foi possível carregar o histórico agora (' + err.message + ').</div>';
   }
 }
-
 // Só considera, no histórico, os DOPs que estão dentro do escopo ATUAL —
 // ou seja, já passando pelos filtros do topo (Responsável, Estação,
 // Sub-Regional...). Antes usava DATA (a base inteira, sem filtro nenhum),
@@ -219,7 +202,6 @@ function historicoFiltradoPorEscopo(){
   const escopoAtual = filtered();
   return HIST_DATA.filter(h => escopoAtual.some(d=>String(d.dop)===String(h.dop)));
 }
-
 // Agrupa o histórico (já filtrado pro escopo) por DOP, cada série
 // ordenada por data crescente — pronta pra virar linha do gráfico.
 function historicoPorDop(){
@@ -231,7 +213,6 @@ function historicoPorDop(){
   Object.values(porDop).forEach(arr=> arr.sort((a,b)=> new Date(a.data)-new Date(b.data)));
   return porDop;
 }
-
 // FIX (01/09/2026): esta função é usada tanto para rotular DIAS
 // (recebe uma string "YYYY-MM-DD", sem horário) quanto para rotular
 // pontos do gráfico de evolução (recebe um ISO completo, com horário).
@@ -258,7 +239,6 @@ function dateKey(iso){
   if(isNaN(d)) return iso;
   return d.toISOString().slice(0,10);
 }
-
 // Preenche o seletor de período (dias ou semanas disponíveis no histórico
 // carregado), mantendo a seleção atual se ela ainda existir na lista.
 function populateHistoricoPeriodos(){
@@ -266,7 +246,6 @@ function populateHistoricoPeriodos(){
   const sel = document.getElementById("historico-period-select");
   const label = document.getElementById("historico-period-label");
   if(!sel) return;
-
   if(HIST_MODE === "dia"){
     if(label) label.textContent = "Dia";
     const dias = [...new Set(escopo.map(h=>dateKey(h.data)))].sort().reverse();
@@ -280,7 +259,6 @@ function populateHistoricoPeriodos(){
   }
   sel.value = HIST_SELECTED_PERIOD || "";
 }
-
 document.querySelectorAll("#historico-mode-pills .pill").forEach(p=>{
   p.addEventListener("click", ()=>{
     if(p.dataset.mode === HIST_MODE) return;
@@ -291,13 +269,11 @@ document.querySelectorAll("#historico-mode-pills .pill").forEach(p=>{
     if(HIST_LOADED){ populateHistoricoPeriodos(); renderHistoricoRanking(); }
   });
 });
-
 const histPeriodSelect = document.getElementById("historico-period-select");
 if(histPeriodSelect) histPeriodSelect.addEventListener("change", e=>{
   HIST_SELECTED_PERIOD = e.target.value;
   renderHistoricoRanking();
 });
-
 // Ranking Top 10 do período selecionado (um dia específico, ou a soma da
 // semana selecionada). "% Impacto" = fatia dessa agência dentro do total
 // de pós-fechamento de TODAS as agências no período (não o total da
@@ -305,21 +281,17 @@ if(histPeriodSelect) histPeriodSelect.addEventListener("change", e=>{
 // que serviu de referência pro visual deste ranking.
 function renderHistoricoRanking(){
   const escopo = historicoFiltradoPorEscopo();
-
   const linhasPeriodo = HIST_MODE === "dia"
     ? escopo.filter(h => dateKey(h.data) === HIST_SELECTED_PERIOD)
     : escopo.filter(h => h.semana === HIST_SELECTED_PERIOD);
-
   const porDopPeriodo = {};
   linhasPeriodo.forEach(h=>{
     if(!porDopPeriodo[h.dop]) porDopPeriodo[h.dop] = 0;
     porDopPeriodo[h.dop] += num(h.valor);
   });
-
   // Total do período = soma de TODAS as agências (não só o Top 10), pra
   // o % de cada agência refletir o peso real dela no total do período.
   const totalPeriodo = Object.values(porDopPeriodo).reduce((a,b)=>a+b, 0);
-
   // Só entra no ranking quem realmente recebeu pacote depois do fechamento
   // nesse período (valor > 0) — agência zerada não é "ranking", é ruído
   // (e inflava a lista "Ver todas" com dezenas de linhas sem barra nenhuma).
@@ -334,26 +306,21 @@ function renderHistoricoRanking(){
       pct: totalPeriodo > 0 ? (valor/totalPeriodo) : 0
     };
   }).filter(l=>l.valor > 0).sort((a,b)=>b.valor-a.valor);
-
   HIST_RANKING_COMPLETO = rankingCompleto;
-
   const el = document.getElementById("table-historico");
   if(!el) return;
-
   // Busca por DOP confirmada (HIST_DOP_FILTRO setado em buscarHistoricoDop):
   // mostra SÓ essa agência, em vez da lista inteira — com um link pra
   // voltar ao ranking completo.
   if(HIST_DOP_FILTRO){
     const posicao = rankingCompleto.findIndex(l=>String(l.dop)===String(HIST_DOP_FILTRO));
     const voltar = '<div class="hist-rank-toggle" data-action="clear-dop-filter">← Ver ranking completo</div>';
-
     if(posicao < 0){
       el.innerHTML = '<div class="empty-state">DOP ' + HIST_DOP_FILTRO + ' não recebeu pacotes pós-fechamento nesse período/filtro.</div>' + voltar;
       const clearEl1 = el.querySelector('[data-action="clear-dop-filter"]');
       if(clearEl1) clearEl1.addEventListener("click", limparBuscaHistoricoDop);
       return;
     }
-
     const l = rankingCompleto[posicao];
     const maxValorFiltro = Math.max(...rankingCompleto.map(x=>x.valor), 1);
     const linha = `
@@ -364,30 +331,24 @@ function renderHistoricoRanking(){
         <div class="hist-rank-val">${l.valor.toLocaleString("pt-BR")}</div>
         <div class="hist-rank-pct">${pct0(l.pct)}</div>
       </div>`;
-
     el.innerHTML = '<div class="hist-rank-rows">' + linha + '</div>' + voltar;
     const clearEl = el.querySelector('[data-action="clear-dop-filter"]');
     if(clearEl) clearEl.addEventListener("click", limparBuscaHistoricoDop);
-
     selecionarHistoricoDop(l.dop);
     return;
   }
-
   // Por padrão só o Top 10 (pra não repetir aquele scroll gigante da
   // página inteira); "Ver todas" alterna pra lista completa, com um
   // scroll PRÓPRIO e limitado, só dentro do card — não força a página
   // toda a rolar de novo.
   const ranking = HIST_SHOW_ALL ? rankingCompleto : rankingCompleto.slice(0,10);
-
   if(!rankingCompleto.length){
     el.innerHTML = '<div class="empty-state">Sem dados de histórico para o período selecionado.</div>';
     return;
   }
-
   // Escala das barras sempre pelo maior valor do período inteiro (não só
   // do que está visível), pra não "pular" de tamanho ao expandir/recolher.
   const maxValor = Math.max(...rankingCompleto.map(l=>l.valor), 1);
-
   // IMPORTANTE: nada de onclick="...(${JSON.stringify(l.dop)})" aqui — como
   // o DOP vem como string, JSON.stringify devolve algo como "7990" (com
   // aspas duplas dentro), e isso quebra o atributo onclick="..." que já usa
@@ -404,28 +365,22 @@ function renderHistoricoRanking(){
       <div class="hist-rank-val">${l.valor.toLocaleString("pt-BR")}</div>
       <div class="hist-rank-pct">${pct0(l.pct)}</div>
     </div>`).join("");
-
   const toggle = rankingCompleto.length > 10
     ? `<div class="hist-rank-toggle" data-action="toggle-show-all">${HIST_SHOW_ALL ? "Ver só Top 10" : `Ver todas as ${rankingCompleto.length} agências`}</div>`
     : "";
-
   el.innerHTML = `<div class="hist-rank-rows${HIST_SHOW_ALL ? " hist-rank-rows-scroll" : ""}">${linhas}</div>${toggle}`;
-
   el.querySelectorAll(".hist-rank-row").forEach(row=>{
     row.addEventListener("click", ()=> selecionarHistoricoDop(row.dataset.dop));
   });
   const toggleEl = el.querySelector('[data-action="toggle-show-all"]');
   if(toggleEl) toggleEl.addEventListener("click", toggleHistoricoShowAll);
-
   const aindaExiste = ranking.some(l=>String(l.dop)===String(HIST_SELECTED_DOP));
   selecionarHistoricoDop(aindaExiste ? HIST_SELECTED_DOP : ranking[0].dop);
 }
-
 function toggleHistoricoShowAll(){
   HIST_SHOW_ALL = !HIST_SHOW_ALL;
   renderHistoricoRanking();
 }
-
 // Busca rápida por número de DOP no ranking (útil com centenas de
 // agências, sem precisar clicar em "Ver todas" e catar na mão). Aceita o
 // número exato ou o começo dele; se achar, a lista passa a mostrar SÓ essa
@@ -434,13 +389,10 @@ function buscarHistoricoDop(){
   const input = document.getElementById("historico-dop-input");
   const msgEl = document.getElementById("historico-dop-search-msg");
   if(!input || !msgEl) return;
-
   const termo = input.value.trim();
   if(!termo){ msgEl.style.display = "none"; HIST_DOP_FILTRO = null; renderHistoricoRanking(); return; }
-
   const encontrado = HIST_RANKING_COMPLETO.find(l=>String(l.dop)===termo)
     || HIST_RANKING_COMPLETO.find(l=>String(l.dop).startsWith(termo));
-
   if(!encontrado){
     msgEl.style.display = "block";
     msgEl.textContent = 'Nenhuma agência com DOP "' + termo + '" no período/filtro atual.';
@@ -448,13 +400,11 @@ function buscarHistoricoDop(){
     renderHistoricoRanking();
     return;
   }
-
   msgEl.style.display = "none";
   HIST_SELECTED_DOP = encontrado.dop;
   HIST_DOP_FILTRO = encontrado.dop;
   renderHistoricoRanking();
 }
-
 // Limpa a busca por DOP e volta a mostrar o ranking inteiro (Top 10 / Ver
 // todas) — acionado pelo link "← Ver ranking completo".
 function limparBuscaHistoricoDop(){
@@ -465,7 +415,6 @@ function limparBuscaHistoricoDop(){
   HIST_DOP_FILTRO = null;
   renderHistoricoRanking();
 }
-
 const histDopInput = document.getElementById("historico-dop-input");
 if(histDopInput){
   histDopInput.addEventListener("keydown", e=>{
@@ -479,24 +428,20 @@ if(histDopInput){
     }
   });
 }
-
 function selecionarHistoricoDop(dop){
   HIST_SELECTED_DOP = dop;
   const porDop = historicoPorDop();
   const serie = porDop[dop] || [];
   const info = DATA.find(d=>String(d.dop)===String(dop));
-
   document.querySelectorAll("#table-historico .hist-rank-row").forEach(row=> row.classList.remove("row-selected"));
   const rowEl = [...document.querySelectorAll("#table-historico .hist-rank-row")].find(row=>row.dataset.dop===String(dop));
   if(rowEl) rowEl.classList.add("row-selected");
-
   const card = document.getElementById("historico-chart-card");
   const title = document.getElementById("historico-chart-title");
   if(card) card.style.display = "block";
   if(title) title.textContent = "Evolução diária (últimos 3 meses) — " + (info ? info.agencia : ("DOP " + dop)) + " (DOP " + dop + ")";
   drawLineChart("historico-chart", serie.map(h=>({label: fmtDateShort(h.data), value: num(h.valor)})));
 }
-
 // Gráfico de linha simples em SVG puro (sem lib externa), no mesmo estilo
 // visual do resto do painel — usa as mesmas variáveis de tema (funciona em
 // modo claro e escuro).
@@ -505,20 +450,16 @@ function drawLineChart(svgId, points){
   if(!svg) return;
   const W = 900, H = 220, padL = 46, padR = 16, padT = 16, padB = 30;
   svg.setAttribute("viewBox", "0 0 " + W + " " + H);
-
   if(!points.length){
     svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--text-muted)" font-size="12">Sem dados no período.</text>`;
     return;
   }
-
   const values = points.map(p=>p.value);
   const maxV = Math.max(...values, 1);
   const innerW = W - padL - padR, innerH = H - padT - padB;
   const stepX = points.length>1 ? innerW/(points.length-1) : 0;
-
   const xAt = i => padL + stepX*i;
   const yAt = v => padT + innerH - (v/maxV)*innerH;
-
   let grid = "";
   const steps = 4;
   for(let s=0; s<=steps; s++){
@@ -527,7 +468,6 @@ function drawLineChart(svgId, points){
     grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="var(--grid)" stroke-width="1"/>`;
     grid += `<text x="${padL-8}" y="${y+3}" text-anchor="end" font-size="10" fill="var(--text-muted)">${Math.round(v).toLocaleString("pt-BR")}</text>`;
   }
-
   let path = "", area = `M ${xAt(0)} ${yAt(0)} `;
   points.forEach((p,i)=>{
     const x = xAt(i), y = yAt(p.value);
@@ -535,7 +475,6 @@ function drawLineChart(svgId, points){
     area += "L " + x + " " + y + " ";
   });
   area += `L ${xAt(points.length-1)} ${yAt(0)} Z`;
-
   let dots = "", labels = "";
   const labelEvery = Math.max(1, Math.ceil(points.length/8));
   points.forEach((p,i)=>{
@@ -545,16 +484,88 @@ function drawLineChart(svgId, points){
       labels += `<text x="${x}" y="${H-8}" text-anchor="middle" font-size="10" fill="var(--text-muted)">${p.label}</text>`;
     }
   });
-
   svg.innerHTML = grid +
     `<path d="${area}" fill="var(--brand)" opacity="0.10"/>` +
     `<path d="${path}" fill="none" stroke="var(--brand)" stroke-width="2"/>` +
     dots + labels;
 }
-
 const histRefreshBtn = document.getElementById("historico-refresh");
 if(histRefreshBtn) histRefreshBtn.addEventListener("click", ()=> loadHistorico());
-
+// ==================== ANÁLISE DE BACKLOG (pacotes arrastados) ====================
+// Carregado sob demanda (só quando a aba "Análise de Backlog" é aberta pela
+// primeira vez) — mesmo padrão do Histórico. Mostra, por DOP, quantos
+// pacotes estão parados em cada dia de aging (D1, D2, D3...), vindo direto
+// da aba "Forward" (Backlog OPS) via WebApp.gs (?tipo=backlog). D0 ("hoje")
+// não entra — só é considerado "arrastado" quem já passou de um dia.
+let BACKLOG_DATA = [];
+let BACKLOG_LOADED = false;
+async function loadBacklogAnalise(){
+  const el = document.getElementById("backlog-list");
+  if(el) el.innerHTML = '<div class="empty-state">Carregando análise de backlog…</div>';
+  try{
+    const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+    const json = await fetchViaIframe(API_URL + sep + "tipo=backlog", 30000);
+    BACKLOG_DATA = Array.isArray(json) ? json : (json.backlog || []);
+    BACKLOG_LOADED = true;
+    renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
+  } catch(err){
+    console.error(err);
+    if(el) el.innerHTML = '<div class="empty-state">Não foi possível carregar a análise de backlog agora (' + err.message + ').</div>';
+  }
+}
+// "D_1" -> "D1" (só pra exibição)
+function diaLabel(chave){
+  return chave.replace("D_", "D");
+}
+// Só considera, na análise de backlog, os DOPs dentro do escopo ATUAL —
+// respeitando os filtros do topo (Responsável, Estação, Sub-Regional...),
+// igual o Histórico já faz.
+function renderBacklogAnalise(filtro){
+  const el = document.getElementById("backlog-list");
+  const badge = document.getElementById("nav-backlog-badge");
+  if(!el) return;
+  if(!BACKLOG_LOADED){
+    el.innerHTML = '<div class="empty-state">Abra esta aba para carregar a análise de backlog.</div>';
+    return;
+  }
+  const termo = (filtro||"").trim().toLowerCase();
+  const escopoAtual = filtered();
+  const dopsEscopo = new Set(escopoAtual.map(d=>String(d.dop)));
+  let linhas = BACKLOG_DATA.filter(b => dopsEscopo.has(String(b.dop)));
+  if(badge) badge.textContent = linhas.length;
+  if(termo){
+    linhas = linhas.filter(b =>
+      String(b.dop).toLowerCase().includes(termo) ||
+      (b.agencia||"").toLowerCase().includes(termo)
+    );
+  }
+  if(!linhas.length){
+    el.innerHTML = '<div class="empty-state">Nenhum DOP com pacotes parados (D1+) para os filtros atuais.</div>';
+    return;
+  }
+  el.innerHTML = linhas.map(b => {
+    const chips = Object.keys(b.dias||{})
+      .sort((a,c)=> (+a.replace("D_","")) - (+c.replace("D_","")))
+      .map(k => {
+        const qtd = b.dias[k];
+        return `<span class="badge warning" style="margin:2px 4px 2px 0;"><span class="ic"></span>${diaLabel(k)} - ${qtd.toLocaleString("pt-BR")} pacote${qtd>1?'s':''}</span>`;
+      }).join("");
+    return `
+      <div class="alert-row" data-dop="${b.dop}" style="grid-template-columns:1.4fr 0.9fr; cursor:pointer; align-items:flex-start;" title="Clique para ver o detalhe de ${b.agencia}">
+        <div><div class="alert-name">${b.agencia}</div><div class="alert-sub">DOP ${b.dop} · ${b.totalArrastado.toLocaleString("pt-BR")} pacote${b.totalArrastado>1?'s':''} parado${b.totalArrastado>1?'s':''}</div></div>
+        <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">${chips}</div>
+      </div>`;
+  }).join("");
+  el.querySelectorAll(".alert-row[data-dop]").forEach(row=>{
+    row.addEventListener("click", ()=> openDetail(row.dataset.dop));
+  });
+}
+const backlogSearchInput = document.getElementById("backlog-search");
+if(backlogSearchInput){
+  backlogSearchInput.addEventListener("input", e=> renderBacklogAnalise(e.target.value));
+}
+const backlogRefreshBtn = document.getElementById("backlog-refresh");
+if(backlogRefreshBtn) backlogRefreshBtn.addEventListener("click", ()=> loadBacklogAnalise());
 function filtered(){
   return DATA.filter(d =>
     (!filters.resp || d.resp===filters.resp) &&
@@ -565,7 +576,6 @@ function filtered(){
     (!filters.risco || d.risco===filters.risco)
   );
 }
-
 function alertIndicador(d){
   if(d.statusColeta && d.statusColeta.toUpperCase().includes("3+")) return {label:"Sem coleta", valor:"3+ dias"};
   if(d.horasSemColeta >= 20) return {label:"Sem coleta", valor: d.horasSemColeta.toFixed(0)+"h"};
@@ -574,7 +584,6 @@ function alertIndicador(d){
   if(d.backlogOps > 300) return {label:"Backlog Total", valor: d.backlogOps.toLocaleString("pt-BR")};
   return {label:"Risco Operacional", valor: d.risco};
 }
-
 // Cards principais — mesmo conjunto do painel de agências (backlog, coleta,
 // FIFO/Same Day médios, volumes).
 function kpiCardsPrimary(rows){
@@ -599,7 +608,6 @@ function kpiCardsPrimary(rows){
     {label:"Volume Inbound", value: volInbound.toLocaleString("pt-BR"), icon:"⬇"},
   ];
 }
-
 // Cards extras — indicadores próprios deste painel operacional (risco,
 // atrasados), que não existem no painel de agências.
 function kpiCardsSecondary(rows){
@@ -614,7 +622,6 @@ function kpiCardsSecondary(rows){
     {label:"Valor Perdido (R$)", value: perdasValorTotal.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}), icon:"💸", cls: perdasValorTotal>0?"crit":""},
   ];
 }
-
 function renderKpis(targetId, cards){
   const el = document.getElementById(targetId);
   el.innerHTML = "";
@@ -625,7 +632,6 @@ function renderKpis(targetId, cards){
     el.appendChild(div);
   });
 }
-
 const ALERTS_PREVIEW_COUNT = 8;
 function renderAlerts(rows){
   const el = document.getElementById("alerts-list");
@@ -648,7 +654,6 @@ function renderAlerts(rows){
     row.onclick = ()=> openDetail(d.dop);
     el.appendChild(row);
   });
-
   const top = document.getElementById("alerts-toggle-top");
   const bottom = document.getElementById("alerts-toggle-bottom");
   const showToggle = hasMore || expandState.alerts;
@@ -660,7 +665,6 @@ function renderAlerts(rows){
     bottom.classList.toggle("is-open", expandState.alerts);
   }
 }
-
 function donut(svgId, legendId, groups, colorFn){
   const svg = document.getElementById(svgId);
   const legend = document.getElementById(legendId);
@@ -682,16 +686,13 @@ function donut(svgId, legendId, groups, colorFn){
   legend.innerHTML = groups.map(g=>`<div class="legend-item"><span class="legend-swatch" style="background:${g.color}"></span>${g.label}<span class="legend-val">${g.value} (${((g.value/total)*100).toFixed(0)}%)</span></div>`).join("");
 }
 function polar(cx,cy,r,angleDeg){ const a=(angleDeg*Math.PI)/180; return {x:cx+r*Math.cos(a), y:cy+r*Math.sin(a)}; }
-
 function groupCount(rows, field, mapClassColor){
   const m = {};
   rows.forEach(d=>{ const k=d[field]||"—"; m[k]=(m[k]||0)+1; });
   return Object.entries(m).map(([label,value])=>({label, value, color: mapClassColor(label)}))
     .sort((a,b)=>b.value-a.value);
 }
-
 function fifoBadgeClass(v){ return v>=0.95?"good":v>=0.85?"warning":"critical"; }
-
 const RESUMO_PREVIEW_COUNT = 5;
 function renderResumoToggle(topId, bottomId, stateKey, defaultLabel, hasMore){
   const top = document.getElementById(topId);
@@ -705,7 +706,6 @@ function renderResumoToggle(topId, bottomId, stateKey, defaultLabel, hasMore){
     bottom.classList.toggle("is-open", isOpen);
   }
 }
-
 function renderRankLists(rows){
   const byFifo = [...rows].sort((a,b)=>a.fifoSemana-b.fifoSemana).slice(0,8);
   const fifoHtml = byFifo.map((d,i)=>rankRow(i,d,pct0(d.fifoSemana), fifoBadgeClass(d.fifoSemana))).join("") || emptyRow();
@@ -714,7 +714,6 @@ function renderRankLists(rows){
   const fifoPreview = expandState.fifoResumo ? byFifo : byFifo.slice(0, RESUMO_PREVIEW_COUNT);
   if(rankFifoResumo) rankFifoResumo.innerHTML = fifoPreview.map((d,i)=>rankRow(i,d,pct0(d.fifoSemana), fifoBadgeClass(d.fifoSemana))).join("") || emptyRow();
   renderResumoToggle("fifo-resumo-toggle-top","fifo-resumo-toggle-bottom","fifoResumo","Ver ranking completo", byFifo.length>RESUMO_PREVIEW_COUNT);
-
   const bySameDay = [...rows].sort((a,b)=>a.sameDaySemana-b.sameDaySemana).slice(0,8);
   const sdHtml = bySameDay.map((d,i)=>rankRow(i,d,pct0(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana))).join("") || emptyRow();
   document.getElementById("rank-sameday").innerHTML = sdHtml;
@@ -722,7 +721,6 @@ function renderRankLists(rows){
   const sdPreview = expandState.sdResumo ? bySameDay : bySameDay.slice(0, RESUMO_PREVIEW_COUNT);
   if(rankSdResumo) rankSdResumo.innerHTML = sdPreview.map((d,i)=>rankRow(i,d,pct0(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana))).join("") || emptyRow();
   renderResumoToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdResumo","Ver ranking completo", bySameDay.length>RESUMO_PREVIEW_COUNT);
-
   // Maiores ofensores em Losses — ranqueia pelo valor perdido (R$), que é o
   // que realmente pesa pro negócio (mais direto que quantidade de pacotes).
   const byLosses = [...rows].sort((a,b)=>b.perdasValor-a.perdasValor).slice(0,8);
@@ -732,11 +730,9 @@ function renderRankLists(rows){
     d.perdasValor>=1000?"critical":d.perdasValor>0?"warning":"good",
     d.perdasQtd.toLocaleString("pt-BR") + (d.perdasQtd===1?" pacote":" pacotes")
   )).join("") || emptyRow();
-
   const byColeta = [...rows].sort((a,b)=>b.horasSemColeta-a.horasSemColeta).slice(0,8);
   document.getElementById("rank-coleta").innerHTML = byColeta.map((d,i)=>rankRow(i,d,d.horasSemColeta.toFixed(0)+"h", coletaClass(d.statusColeta))).join("") || emptyRow();
 }
-
 // Tabela "Dops sem coleta há mais tempo" — mesma lógica do painel de agências.
 const SEM_COLETA_COLS = [
   {k:"agencia", l:"Agência"}, {k:"dop", l:"DOP"},
@@ -784,7 +780,6 @@ function rankRow(i,d,val,cls,extra){
     <div style="text-align:right"><span class="badge ${cls}"><span class="ic"></span>${val}</span></div>
   </div>`;
 }
-
 const TABLE_COLS = [
   {k:"dop", l:"DOP"}, {k:"agencia", l:"Agência"}, {k:"cidade", l:"Cidade"}, {k:"resp", l:"Responsável"},
   {k:"backlogOps", l:"Backlog"},
@@ -793,7 +788,6 @@ const TABLE_COLS = [
   {k:"perdasQtd", l:"Pacotes Perdidos"}, {k:"risco", l:"Risco", badge:riskClass}, {k:"statusColeta", l:"Coleta", badge:coletaClass}, {k:"status", l:"Status", badge:riskClass}
 ];
 let sortState = { key:"backlogOps", dir:-1 };
-
 function renderTable(targetId, rows, cols, sortKeyState){
   const el = document.getElementById(targetId);
   const st = sortKeyState;
@@ -822,7 +816,6 @@ function renderTable(targetId, rows, cols, sortKeyState){
     };
   });
 }
-
 const BASE_COLS = [
   {k:"dop", l:"DOP"}, {k:"agencia", l:"Agência"}, {k:"resp", l:"Responsável"}, {k:"cidade", l:"Cidade"}, {k:"estado", l:"Estado"},
   {k:"subreg", l:"Sub-Regional"}, {k:"estacao", l:"Estação"}, {k:"backlog", l:"Backlog"}, {k:"backlogOps", l:"Backlog OPS"},
@@ -834,14 +827,12 @@ const BASE_COLS = [
 ];
 let baseSortState = { key:"dop", dir:1 };
 let gestaoSortState = { key:"backlogOps", dir:-1 };
-
 function fmtDate(iso){
   if(!iso) return "—";
   const d = new Date(iso);
   if(isNaN(d)) return iso;
   return d.toLocaleString("pt-BR", {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
 }
-
 function openDetail(dop){
   const d = DATA.find(x=>String(x.dop)===String(dop));
   document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("active"));
@@ -851,7 +842,6 @@ function openDetail(dop){
   document.getElementById("detail-search").value = d ? d.agencia : "";
   renderDetail(d);
 }
-
 function renderDetail(d){
   const card = document.getElementById("detail-card");
   if(!d){ card.innerHTML = '<div class="empty-state">Nenhuma agência encontrada.</div>'; return; }
@@ -886,14 +876,12 @@ function renderDetail(d){
       <div class="detail-item"><div class="l">Atualizado em</div><div class="v" style="font-size:13px">${fmtDate(d.data)}</div></div>
     </div>`;
 }
-
 document.getElementById("detail-search").addEventListener("input", e=>{
   const q = e.target.value.trim().toLowerCase();
   if(!q){ document.getElementById("detail-card").innerHTML = '<div class="empty-state">Busque uma agência pelo DOP ou nome para ver o detalhe completo.</div>'; return; }
   const d = DATA.find(x => String(x.dop).toLowerCase()===q || x.agencia.toLowerCase().includes(q) || x.fantasia.toLowerCase().includes(q));
   renderDetail(d);
 });
-
 function renderGestaoPills(){
   const el = document.getElementById("gestao-pills");
   const names = uniq("resp");
@@ -906,17 +894,14 @@ function renderGestaoPills(){
     el.appendChild(p);
   });
 }
-
 function renderAll(){
   const rows = filtered();
   CURRENT_ROWS = rows;
-
   renderKpis("kpi-grid", kpiCardsPrimary(rows));
   renderKpis("kpi-grid-extra", kpiCardsSecondary(rows));
   renderAlerts(rows);
   donut("donut-risco","legend-risco", groupCount(rows,"risco", l=>({good:"#0ca30c",warning:"#fab219",critical:"#d03b3b"}[riskClass(l)])), null);
   donut("donut-coleta","legend-coleta", groupCount(rows,"statusColeta", l=>({good:"#0ca30c",warning:"#fab219",critical:"#d03b3b"}[coletaClass(l)])), null);
-
   const cidadeCounts = {};
   rows.forEach(d=>{ cidadeCounts[d.cidade]=(cidadeCounts[d.cidade]||0)+1; });
   let cidadeArr = Object.entries(cidadeCounts).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value);
@@ -925,29 +910,26 @@ function renderAll(){
   if(rest>0) top.push({label:"Outras", value:rest});
   top.forEach((g,i)=> g.color = CATS[i % CATS.length]);
   donut("donut-cidade","legend-cidade", top, null);
-
   renderRankLists(rows);
   renderSemColetaTable(rows);
   renderTable("table-desempenho", rows, TABLE_COLS, sortState);
   renderTable("table-base", rows, BASE_COLS, baseSortState);
-
   // Minha Gestão
   const gestaoRows = filters.gestaoResp ? rows.filter(d=>d.resp===filters.gestaoResp) : rows;
   document.getElementById("nav-gestao-badge").textContent = filters.gestaoResp ? gestaoRows.length : rows.length;
   renderKpis("kpi-grid-gestao", kpiCardsPrimary(gestaoRows).concat(kpiCardsSecondary(gestaoRows)));
   renderTable("table-gestao", gestaoRows, TABLE_COLS, gestaoSortState);
   renderGestaoPills();
-
   const dates = rows.map(d=>d.data).filter(Boolean).sort();
   const last = dates[dates.length-1];
   document.getElementById("update-chip").title = "Última linha atualizada na planilha: " + (last ? fmtDate(last) : "—");
-
   // Se o Histórico Pós-Fechamento já foi carregado, atualiza o ranking dele
   // também — os filtros do topo (Responsável, Estação, etc.) devem valer
   // pra ele igual valem pro resto do painel.
   if(HIST_LOADED) renderHistoricoRanking();
+  // Mesma lógica pra Análise de Backlog, já carregada ou não.
+  if(BACKLOG_LOADED) renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
 }
-
 // nav
 document.querySelectorAll(".nav-item").forEach(item=>{
   item.addEventListener("click", ()=>{
@@ -956,6 +938,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
     document.getElementById("sec-"+item.dataset.section).classList.add("active");
     if(item.dataset.section === "historico" && !HIST_LOADED){ loadHistorico(); }
+    if(item.dataset.section === "backlog" && !BACKLOG_LOADED){ loadBacklogAnalise(); }
   });
 });
 document.querySelectorAll("[data-goto]").forEach(el=>{
@@ -963,14 +946,12 @@ document.querySelectorAll("[data-goto]").forEach(el=>{
     document.querySelector('.nav-item[data-section="'+el.dataset.goto+'"]').click();
   });
 });
-
 // Toggles "ver todas / ver ranking completo" ↔ "fechar" dos cards do Resumo
 // Geral — reaproveita os dados já filtrados (CURRENT_ROWS), sem precisar
 // refazer todo o renderAll().
 wireExpandToggle("alerts-toggle-top","alerts-toggle-bottom","alerts", ()=> renderAlerts(CURRENT_ROWS));
 wireExpandToggle("fifo-resumo-toggle-top","fifo-resumo-toggle-bottom","fifoResumo", ()=> renderRankLists(CURRENT_ROWS));
 wireExpandToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdResumo", ()=> renderRankLists(CURRENT_ROWS));
-
 // theme
 const themeBtn = document.getElementById("theme-toggle");
 function applyTheme(t){
@@ -980,6 +961,5 @@ function applyTheme(t){
 let currentTheme = "light";
 themeBtn.addEventListener("click", ()=>{ currentTheme = currentTheme==="dark"?"light":"dark"; applyTheme(currentTheme); });
 applyTheme(currentTheme);
-
 loadData(true);
 setInterval(()=> loadData(false), REFRESH_INTERVAL_MS);
