@@ -576,6 +576,19 @@ if(backlogRefreshBtn) backlogRefreshBtn.addEventListener("click", ()=> loadBackl
 let NF_DATA = [];
 let NF_LOADED = false;
 let nfFilters = { mes:"", regional:"", subregional:"", analista:"" };
+const NF_MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+// "2026-08-01T03:00:00.000Z" -> "Agosto/2026". Usa UTC (não o fuso do
+// navegador) pra não "voltar" um mês perto da virada, mesma lógica do
+// fmtDateShort do Histórico. Se não for uma data reconhecível, devolve o
+// valor original sem mexer.
+function nfFormatMes(v){
+  if(v===null || v===undefined || v==="") return "—";
+  const d = new Date(v);
+  if(!isNaN(d) && /^\d{4}-\d{2}-\d{2}/.test(String(v))){
+    return NF_MESES_PT[d.getUTCMonth()] + "/" + d.getUTCFullYear();
+  }
+  return String(v);
+}
 async function loadNotasFiscais(){
   const el = document.getElementById("nf-rank-regional");
   if(el) el.innerHTML = '<div class="empty-state">Carregando pendências…</div>';
@@ -586,7 +599,13 @@ async function loadNotasFiscais(){
     // pro cálculo ao vivo (lento, lê Julho/Agosto inteiros) só nessa
     // primeira vez — depois disso o cache já existe e a resposta é rápida.
     const json = await fetchViaIframe(API_URL + sep + "tipo=pagamentos", 60000);
-    NF_DATA = Array.isArray(json) ? json : (json.pendentes || []);
+    const brutos = Array.isArray(json) ? json : (json.pendentes || []);
+    // A coluna "mes" na planilha vem como data de verdade, não texto — o
+    // Apps Script devolve isso em JSON como "2026-08-01T03:00:00.000Z".
+    // Convertemos aqui pra "Agosto/2026" antes de tudo, pra filtro e tabela
+    // já usarem o texto legível (em vez do timestamp cru que aparecia no
+    // seletor "Mês").
+    NF_DATA = brutos.map(d => Object.assign({}, d, { mes: nfFormatMes(d.mes) }));
     NF_LOADED = true;
     populateNfFilters();
     renderNotasFiscais();
@@ -596,15 +615,27 @@ async function loadNotasFiscais(){
   }
 }
 function nfUniq(rows, field){ return [...new Set(rows.map(d=>d[field]).filter(Boolean))].sort(); }
+// Filtra NF_DATA pelos filtros já escolhidos, exceto o campo "exceptKey" —
+// usado pra popular cada select só com as opções que ainda fazem sentido
+// dado o que já foi selecionado nos outros (ex: escolher a Sub-Regional
+// "CO" deixa o select de Analista mostrando só quem tem DOP pendente na CO).
+function nfFilteredExcept(exceptKey){
+  return NF_DATA.filter(d =>
+    (exceptKey==="mes" || !nfFilters.mes || d.mes===nfFilters.mes) &&
+    (exceptKey==="regional" || !nfFilters.regional || d.regional===nfFilters.regional) &&
+    (exceptKey==="subregional" || !nfFilters.subregional || d.subRegional===nfFilters.subregional) &&
+    (exceptKey==="analista" || !nfFilters.analista || d.analista===nfFilters.analista)
+  );
+}
 function populateNfFilters(){
-  populateSelect("nf-f-mes", nfUniq(NF_DATA,"mes"));
-  populateSelect("nf-f-regional", nfUniq(NF_DATA,"regional"));
-  populateSelect("nf-f-subregional", nfUniq(NF_DATA,"subRegional"));
-  populateSelect("nf-f-analista", nfUniq(NF_DATA,"analista"));
+  populateSelect("nf-f-mes", nfUniq(nfFilteredExcept("mes"),"mes"));
+  populateSelect("nf-f-regional", nfUniq(nfFilteredExcept("regional"),"regional"));
+  populateSelect("nf-f-subregional", nfUniq(nfFilteredExcept("subregional"),"subRegional"));
+  populateSelect("nf-f-analista", nfUniq(nfFilteredExcept("analista"),"analista"));
 }
 ["mes","regional","subregional","analista"].forEach(k=>{
   const elSel = document.getElementById("nf-f-"+k);
-  if(elSel) elSel.addEventListener("change", e=>{ nfFilters[k]=e.target.value; renderNotasFiscais(); });
+  if(elSel) elSel.addEventListener("change", e=>{ nfFilters[k]=e.target.value; populateNfFilters(); renderNotasFiscais(); });
 });
 function nfFiltered(){
   return NF_DATA.filter(d =>
