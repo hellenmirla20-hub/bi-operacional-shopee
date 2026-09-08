@@ -25,6 +25,7 @@
     <div class="nav-item" data-section="desempenho"><span class="dot"></span>Desempenho por Agência</div>
     <div class="nav-item" data-section="detalhe"><span class="dot"></span>Detalhe da Agência</div>
     <div class="nav-item" data-section="backlog"><span class="dot"></span>Análise de Backlog<span class="nav-badge" id="nav-backlog-badge">0</span></div>
+    <div class="nav-item" data-section="notasfiscais"><span class="dot"></span>Notas Fiscais Pendentes<span class="nav-badge" id="nav-nf-badge">0</span></div>
     <div class="nav-item" data-section="base"><span class="dot"></span>Base de Dados</div>
     <div class="nav-item" data-section="historico"><span class="dot"></span>Histórico Pós-Fechamento</div>
   </div>
@@ -184,6 +185,44 @@
       </div>
     </div>
 
+    <!-- NOTAS FISCAIS PENDENTES -->
+    <div class="section" id="sec-notasfiscais">
+      <div class="section-title">Notas Fiscais Pendentes</div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">📄 DOPs aguardando validação do analista</div>
+          <div class="card-link" id="nf-refresh">Atualizar</div>
+        </div>
+        <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
+          <div class="filter"><label>Mês</label><select id="nf-f-mes"><option value="">Todos</option></select></div>
+          <div class="filter"><label>Regional</label><select id="nf-f-regional"><option value="">Todas</option></select></div>
+          <div class="filter"><label>Sub-Regional</label><select id="nf-f-subregional"><option value="">Todas</option></select></div>
+          <div class="filter"><label>Analista</label><select id="nf-f-analista"><option value="">Todos</option></select></div>
+        </div>
+        <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);" id="nf-kpi-grid"></div>
+      </div>
+
+      <div class="grid3">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Por Regional</div></div>
+          <div id="nf-rank-regional"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Por Sub-Regional</div></div>
+          <div id="nf-rank-subregional"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Por Analista</div></div>
+          <div id="nf-rank-analista"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-title">Lista de DOPs pendentes</div></div>
+        <div class="table-wrap"><table class="data" id="nf-table"></table></div>
+      </div>
+    </div>
+
     <!-- BASE -->
     <div class="section" id="sec-base">
       <div class="section-title">Base de Dados</div>
@@ -193,42 +232,3 @@
     </div>
 
     <!-- HISTORICO POS-FECHAMENTO -->
-    <div class="section" id="sec-historico">
-      <div class="section-title">Histórico — Inbound Pós-Fechamento</div>
-      <div class="card">
-        <div class="card-head">
-          <div class="card-title">📦 Ranking — Agências</div>
-          <div class="card-link" id="historico-refresh">Atualizar</div>
-        </div>
-        <div class="pill-row" id="historico-mode-pills">
-          <div class="pill active" data-mode="dia">Por dia</div>
-          <div class="pill" data-mode="semana">Por semana</div>
-        </div>
-        <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
-          <div class="filter" id="historico-period-filter" style="max-width:220px;">
-            <label id="historico-period-label">Dia</label>
-            <select id="historico-period-select"></select>
-          </div>
-          <div class="filter" style="max-width:220px; flex:1; min-width:180px;">
-            <label>Buscar por DOP</label>
-            <input id="historico-dop-input" type="text" inputmode="numeric" placeholder="Ex: 1722" style="width:100%; border:none; background:transparent; color:var(--text-primary); font-size:13px; outline:none; padding:0;">
-          </div>
-        </div>
-        <div class="empty-state" id="historico-dop-search-msg" style="display:none; padding:0 0 12px; text-align:left; font-size:12px;"></div>
-        <div class="hist-rank-list" id="table-historico"></div>
-      </div>
-      <div class="card" id="historico-chart-card" style="margin-top:14px; display:none;">
-        <div class="card-head">
-          <div class="card-title" id="historico-chart-title">Evolução diária (últimos 3 meses)</div>
-        </div>
-        <svg id="historico-chart" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
-      </div>
-    </div>
-
-    <div class="footer-note">Fonte: Base tratada (BI Operacional Shopee) · Painel desenvolvido para Hellen Mirla e Vitor Hugo 💙</div>
-  </div>
-</div>
-
-<script src="script.js"></script>
-</body>
-</html>
