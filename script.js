@@ -581,7 +581,11 @@ async function loadNotasFiscais(){
   if(el) el.innerHTML = '<div class="empty-state">Carregando pendências…</div>';
   try{
     const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
-    const json = await fetchViaIframe(API_URL + sep + "tipo=pagamentos", 30000);
+    // Timeout maior que o padrão: se a aba PAGAMENTOS ainda não tiver sido
+    // populada nenhuma vez (gatilho ainda não rodou), o Apps Script cai
+    // pro cálculo ao vivo (lento, lê Julho/Agosto inteiros) só nessa
+    // primeira vez — depois disso o cache já existe e a resposta é rápida.
+    const json = await fetchViaIframe(API_URL + sep + "tipo=pagamentos", 60000);
     NF_DATA = Array.isArray(json) ? json : (json.pendentes || []);
     NF_LOADED = true;
     populateNfFilters();
