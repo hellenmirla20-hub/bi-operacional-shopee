@@ -232,3 +232,42 @@
     </div>
 
     <!-- HISTORICO POS-FECHAMENTO -->
+        <div class="section" id="sec-historico">
+      <div class="section-title">Histórico — Inbound Pós-Fechamento</div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">📦 Ranking — Agências</div>
+          <div class="card-link" id="historico-refresh">Atualizar</div>
+        </div>
+        <div class="pill-row" id="historico-mode-pills">
+          <div class="pill active" data-mode="dia">Por dia</div>
+          <div class="pill" data-mode="semana">Por semana</div>
+        </div>
+        <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
+          <div class="filter" id="historico-period-filter" style="max-width:220px;">
+            <label id="historico-period-label">Dia</label>
+            <select id="historico-period-select"></select>
+          </div>
+          <div class="filter" style="max-width:220px; flex:1; min-width:180px;">
+            <label>Buscar por DOP</label>
+            <input id="historico-dop-input" type="text" inputmode="numeric" placeholder="Ex: 1722" style="width:100%; border:none; background:transparent; color:var(--text-primary); font-size:13px; outline:none; padding:0;">
+          </div>
+        </div>
+        <div class="empty-state" id="historico-dop-search-msg" style="display:none; padding:0 0 12px; text-align:left; font-size:12px;"></div>
+        <div class="hist-rank-list" id="table-historico"></div>
+      </div>
+      <div class="card" id="historico-chart-card" style="margin-top:14px; display:none;">
+        <div class="card-head">
+          <div class="card-title" id="historico-chart-title">Evolução diária (últimos 3 meses)</div>
+        </div>
+        <svg id="historico-chart" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
+      </div>
+    </div>
+
+    <div class="footer-note">Fonte: Base tratada (BI Operacional Shopee) · Painel desenvolvido para Hellen Mirla e Vitor Hugo 💙</div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
