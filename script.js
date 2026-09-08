@@ -566,6 +566,93 @@ if(backlogSearchInput){
 }
 const backlogRefreshBtn = document.getElementById("backlog-refresh");
 if(backlogRefreshBtn) backlogRefreshBtn.addEventListener("click", ()=> loadBacklogAnalise());
+// ==================== NOTAS FISCAIS PENDENTES ====================
+// Mesmo padrão sob demanda do Histórico/Backlog: só busca (?tipo=pagamentos)
+// quando a aba é aberta pela 1ª vez. Filtros (mês/regional/sub-regional/
+// analista) e agregação por grupo são feitos aqui no navegador, direto em
+// cima da lista de DOPs pendentes que vem do Apps Script (que já varre
+// Julho, Agosto etc. e já deriva a regional — ver pagColetarPendentes em
+// Pagamentos.gs).
+let NF_DATA = [];
+let NF_LOADED = false;
+let nfFilters = { mes:"", regional:"", subregional:"", analista:"" };
+async function loadNotasFiscais(){
+  const el = document.getElementById("nf-rank-regional");
+  if(el) el.innerHTML = '<div class="empty-state">Carregando pendências…</div>';
+  try{
+    const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+    const json = await fetchViaIframe(API_URL + sep + "tipo=pagamentos", 30000);
+    NF_DATA = Array.isArray(json) ? json : (json.pendentes || []);
+    NF_LOADED = true;
+    populateNfFilters();
+    renderNotasFiscais();
+  } catch(err){
+    console.error(err);
+    if(el) el.innerHTML = '<div class="empty-state">Não foi possível carregar as pendências agora (' + err.message + ').</div>';
+  }
+}
+function nfUniq(rows, field){ return [...new Set(rows.map(d=>d[field]).filter(Boolean))].sort(); }
+function populateNfFilters(){
+  populateSelect("nf-f-mes", nfUniq(NF_DATA,"mes"));
+  populateSelect("nf-f-regional", nfUniq(NF_DATA,"regional"));
+  populateSelect("nf-f-subregional", nfUniq(NF_DATA,"subRegional"));
+  populateSelect("nf-f-analista", nfUniq(NF_DATA,"analista"));
+}
+["mes","regional","subregional","analista"].forEach(k=>{
+  const elSel = document.getElementById("nf-f-"+k);
+  if(elSel) elSel.addEventListener("change", e=>{ nfFilters[k]=e.target.value; renderNotasFiscais(); });
+});
+function nfFiltered(){
+  return NF_DATA.filter(d =>
+    (!nfFilters.mes || d.mes===nfFilters.mes) &&
+    (!nfFilters.regional || d.regional===nfFilters.regional) &&
+    (!nfFilters.subregional || d.subRegional===nfFilters.subregional) &&
+    (!nfFilters.analista || d.analista===nfFilters.analista)
+  );
+}
+function nfGroupCount(rows, field){
+  const m = {};
+  rows.forEach(d=>{ const k = d[field] || "(vazio)"; m[k] = (m[k]||0)+1; });
+  return Object.entries(m).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value);
+}
+function nfRenderRankList(targetId, groups){
+  const el = document.getElementById(targetId);
+  if(!el) return;
+  if(!groups.length){ el.innerHTML = emptyRow(); return; }
+  const max = Math.max(...groups.map(g=>g.value),1);
+  el.innerHTML = groups.map((g,i)=>`
+    <div class="hist-rank-row" style="grid-template-columns:18px 1fr 60px 42px;">
+      <div class="rank-num">${i+1}</div>
+      <div class="hist-rank-label">${g.label}</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:${(g.value/max*100).toFixed(1)}%;background:var(--brand)"></div></div>
+      <div class="hist-rank-val">${g.value}</div>
+    </div>`).join("");
+}
+function renderNotasFiscais(){
+  const rows = nfFiltered();
+  const badge = document.getElementById("nav-nf-badge");
+  if(badge) badge.textContent = rows.length;
+  renderKpis("nf-kpi-grid", [
+    {label:"Total Pendentes", value: rows.length, icon:"📄", cls: rows.length>0?"warn":""},
+    {label:"Regionais Afetadas", value: nfUniq(rows,"regional").length, icon:"🗺"},
+    {label:"Analistas com Pendência", value: nfUniq(rows,"analista").length, icon:"🧑‍💼"}
+  ]);
+  nfRenderRankList("nf-rank-regional", nfGroupCount(rows,"regional"));
+  nfRenderRankList("nf-rank-subregional", nfGroupCount(rows,"subRegional"));
+  nfRenderRankList("nf-rank-analista", nfGroupCount(rows,"analista"));
+  const el = document.getElementById("nf-table");
+  if(el){
+    if(!rows.length){
+      el.innerHTML = '<tbody><tr><td class="empty-state">Nenhum DOP pendente para os filtros atuais.</td></tr></tbody>';
+    } else {
+      const thead = "<thead><tr><th>Mês</th><th>DOP</th><th>Empresa</th><th>Sub-Regional</th><th>Regional</th><th>Analista</th></tr></thead>";
+      const tbody = "<tbody>" + rows.map(d=>`<tr><td>${d.mes||"—"}</td><td class="dop-strong">${d.dop}</td><td>${d.empresa||"—"}</td><td>${d.subRegional||"—"}</td><td>${d.regional||"—"}</td><td>${d.analista||"—"}</td></tr>`).join("") + "</tbody>";
+      el.innerHTML = thead + tbody;
+    }
+  }
+}
+const nfRefreshBtn = document.getElementById("nf-refresh");
+if(nfRefreshBtn) nfRefreshBtn.addEventListener("click", ()=> loadNotasFiscais());
 function filtered(){
   return DATA.filter(d =>
     (!filters.resp || d.resp===filters.resp) &&
@@ -939,6 +1026,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("sec-"+item.dataset.section).classList.add("active");
     if(item.dataset.section === "historico" && !HIST_LOADED){ loadHistorico(); }
     if(item.dataset.section === "backlog" && !BACKLOG_LOADED){ loadBacklogAnalise(); }
+    if(item.dataset.section === "notasfiscais" && !NF_LOADED){ loadNotasFiscais(); }
   });
 });
 document.querySelectorAll("[data-goto]").forEach(el=>{
