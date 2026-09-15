@@ -510,6 +510,30 @@ let BACKLOG_LOADED = false;
 // re-renders (filtro digitado, refresh dos dados do topo, botão Atualizar)
 // pra não fechar o que a usuária já abriu.
 let BACKLOG_EXPANDED = new Set();
+// Filtros próprios dessa seção (Regional/Sub-Regional) — independentes dos
+// filtros do topo do painel, porque essa aba usa a planilha Forward direto.
+let backlogFilters = { regional:"", subregional:"" };
+function backlogUniq(rows, field){ return [...new Set(rows.map(d=>d[field]).filter(Boolean))].sort(); }
+// Mesma lógica em cascata do filtro de Notas Fiscais: cada select só mostra
+// as opções que ainda fazem sentido dado o que já foi escolhido no outro.
+function backlogFilteredExcept(exceptKey){
+  return BACKLOG_DATA.filter(d =>
+    (exceptKey==="regional" || !backlogFilters.regional || d.regional===backlogFilters.regional) &&
+    (exceptKey==="subregional" || !backlogFilters.subregional || d.subRegional===backlogFilters.subregional)
+  );
+}
+function populateBacklogFilters(){
+  populateSelect("backlog-f-regional", backlogUniq(backlogFilteredExcept("regional"),"regional"));
+  populateSelect("backlog-f-subregional", backlogUniq(backlogFilteredExcept("subregional"),"subRegional"));
+}
+["regional","subregional"].forEach(k=>{
+  const elSel = document.getElementById("backlog-f-"+k);
+  if(elSel) elSel.addEventListener("change", e=>{
+    backlogFilters[k]=e.target.value;
+    populateBacklogFilters();
+    renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
+  });
+});
 async function loadBacklogAnalise(){
   const el = document.getElementById("backlog-list");
   // Igual o Histórico: a aba "Forward" (Backlog OPS) pode ser grande, então
@@ -521,6 +545,7 @@ async function loadBacklogAnalise(){
     const json = await fetchViaIframe(API_URL + sep + "tipo=backlog", 75000);
     BACKLOG_DATA = Array.isArray(json) ? json : (json.backlog || []);
     BACKLOG_LOADED = true;
+    populateBacklogFilters();
     renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
   } catch(err){
     console.error(err);
@@ -553,13 +578,17 @@ function renderBacklogAnalise(filtro){
     return;
   }
   const termo = (filtro||"").trim().toLowerCase();
-  // Independente dos filtros do topo (Responsável, Estação, Sub-Regional...)
-  // — essa aba usa a planilha Forward direto, sem cruzar com a base
-  // principal do painel (ver comentário acima).
-  const linhas = BACKLOG_DATA;
+  // Independente dos filtros do topo (Responsável, Estação, Cidade...) —
+  // essa aba usa a planilha Forward direto, sem cruzar com a base principal
+  // do painel (ver comentário acima). Regional/Sub-Regional têm filtro
+  // próprio (backlogFilters), só dessa seção.
+  const linhas = BACKLOG_DATA.filter(b =>
+    (!backlogFilters.regional || b.regional===backlogFilters.regional) &&
+    (!backlogFilters.subregional || b.subRegional===backlogFilters.subregional)
+  );
   if(badge) badge.textContent = linhas.length;
   if(!linhas.length){
-    el.innerHTML = '<div class="empty-state">Nenhum DOP com pacotes parados (D1+) no momento.</div>';
+    el.innerHTML = '<div class="empty-state">Nenhum DOP com pacotes parados (D1+) para os filtros atuais.</div>';
     return;
   }
   const grupos = new Map();
