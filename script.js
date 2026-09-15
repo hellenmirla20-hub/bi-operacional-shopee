@@ -494,9 +494,16 @@ if(histRefreshBtn) histRefreshBtn.addEventListener("click", ()=> loadHistorico()
 // ==================== ANÁLISE DE BACKLOG (pacotes arrastados) ====================
 // Carregado sob demanda (só quando a aba "Análise de Backlog" é aberta pela
 // primeira vez) — mesmo padrão do Histórico. Mostra, por DOP, quantos
-// pacotes estão parados em cada dia de aging (D1, D2, D3...), vindo direto
-// da aba "Forward" (Backlog OPS) via WebApp.gs (?tipo=backlog). D0 ("hoje")
-// não entra — só é considerado "arrastado" quem já passou de um dia.
+// pacotes estão parados em cada dia de aging (D1 até D15), vindo direto da
+// aba "Forward" da planilha "Gestão da Rotina | PUDO - ELIVAN" via
+// WebApp.gs (?tipo=backlog). D0 ("hoje") não entra — só é considerado
+// "arrastado" quem já passou de um dia. O analista (RESPONSÁVEL) de cada
+// DOP vem direto dessa planilha (coluna "responsavel") — de propósito NÃO
+// cruza com a base principal (BASE_TRATADA) nem com os filtros do topo,
+// então essa aba é independente do resto do painel. Por enquanto só cobre
+// a frente Forward; RR e BSC (que aparecem na mesma planilha, aba
+// Tabela_Forward_RR_BSC) ficam de fora até a usuária ter acesso às
+// planilhas de origem delas.
 let BACKLOG_DATA = [];
 let BACKLOG_LOADED = false;
 // Nomes de analistas (RESPONSÁVEL) com o grupo expandido — persiste entre
@@ -524,9 +531,6 @@ async function loadBacklogAnalise(){
 function diaLabel(chave){
   return chave.replace("D_", "D");
 }
-// Só considera, na análise de backlog, os DOPs dentro do escopo ATUAL —
-// respeitando os filtros do topo (Responsável, Estação, Sub-Regional...),
-// igual o Histórico já faz.
 // Monta os "chips" de dias parados (D1 - N pacotes, D2 - N pacotes...) de um
 // DOP — usado dentro de cada grupo de analista, ao expandir.
 function backlogDiasChips(b){
@@ -549,18 +553,18 @@ function renderBacklogAnalise(filtro){
     return;
   }
   const termo = (filtro||"").trim().toLowerCase();
-  const escopoAtual = filtered();
-  const dopsEscopo = new Set(escopoAtual.map(d=>String(d.dop)));
-  const respPorDop = new Map(escopoAtual.map(d=>[String(d.dop), d.resp || "Não informado"]));
-  const linhas = BACKLOG_DATA.filter(b => dopsEscopo.has(String(b.dop)));
+  // Independente dos filtros do topo (Responsável, Estação, Sub-Regional...)
+  // — essa aba usa a planilha Forward direto, sem cruzar com a base
+  // principal do painel (ver comentário acima).
+  const linhas = BACKLOG_DATA;
   if(badge) badge.textContent = linhas.length;
   if(!linhas.length){
-    el.innerHTML = '<div class="empty-state">Nenhum DOP com pacotes parados (D1+) para os filtros atuais.</div>';
+    el.innerHTML = '<div class="empty-state">Nenhum DOP com pacotes parados (D1+) no momento.</div>';
     return;
   }
   const grupos = new Map();
   linhas.forEach(b=>{
-    const resp = respPorDop.get(String(b.dop)) || "Não informado";
+    const resp = b.resp || "Não informado";
     if(!grupos.has(resp)) grupos.set(resp, []);
     grupos.get(resp).push(b);
   });
@@ -579,7 +583,7 @@ function renderBacklogAnalise(filtro){
   }
   listaGrupos.sort((a,b)=> b.totalArrastado - a.totalArrastado);
   if(!listaGrupos.length){
-    el.innerHTML = '<div class="empty-state">Nenhum DOP com pacotes parados (D1+) para os filtros atuais.</div>';
+    el.innerHTML = '<div class="empty-state">Nenhum resultado para essa busca.</div>';
     return;
   }
   // Com busca ativa, os grupos com resultado abrem sozinhos (pra não
@@ -587,11 +591,14 @@ function renderBacklogAnalise(filtro){
   // já tinha aberto/fechado manualmente.
   el.innerHTML = listaGrupos.map(g=>{
     const aberto = termo ? true : BACKLOG_EXPANDED.has(g.resp);
-    const dopsRows = !aberto ? "" : g.rows.map(b => `
+    const dopsRows = !aberto ? "" : g.rows.map(b => {
+      const local = [b.cidade, b.estacao].filter(Boolean).join(" · ");
+      return `
       <div class="alert-row backlog-dop-row" data-dop="${b.dop}" style="grid-template-columns:1.4fr 0.9fr; cursor:pointer; align-items:flex-start;" title="Clique para ver o detalhe de ${b.agencia}">
-        <div><div class="alert-name">${b.agencia}</div><div class="alert-sub">DOP ${b.dop} · ${b.totalArrastado.toLocaleString("pt-BR")} pacote${b.totalArrastado>1?'s':''} parado${b.totalArrastado>1?'s':''}</div></div>
+        <div><div class="alert-name">${b.agencia}</div><div class="alert-sub">DOP ${b.dop}${local ? " · " + local : ""} · ${b.totalArrastado.toLocaleString("pt-BR")} pacote${b.totalArrastado>1?'s':''} parado${b.totalArrastado>1?'s':''}</div></div>
         <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">${backlogDiasChips(b)}</div>
-      </div>`).join("");
+      </div>`;
+    }).join("");
     return `
       <div class="backlog-analista-group">
         <div class="alert-row backlog-analista-row" data-analista="${g.resp}" style="grid-template-columns:16px 1fr auto; cursor:pointer;">
