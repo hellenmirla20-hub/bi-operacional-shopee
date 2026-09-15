@@ -132,6 +132,18 @@ a { color: inherit; }
 .col-head { font-size:10.5px; text-transform:uppercase; color:var(--text-muted); letter-spacing:.04em; padding:2px 4px 8px; }
 .rank-num { width:18px; height:18px; border-radius:5px; background:var(--grid); color:var(--text-secondary); font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; }
 
+/* Análise de Backlog — grupos por analista (drill-down) */
+.backlog-analista-group { border-bottom:1px solid var(--grid); }
+.backlog-analista-group:last-child { border-bottom:none; }
+.backlog-analista-row { border-bottom:none; border-radius:8px; }
+.backlog-analista-row:hover { background:var(--surface-2); }
+.backlog-caret { display:inline-block; font-size:10px; color:var(--text-muted); transition:transform .15s ease; }
+.backlog-caret.open { transform:rotate(90deg); }
+.backlog-analista-dops { padding:0 0 8px 22px; }
+.backlog-analista-dops .alert-row { border-bottom:1px solid var(--grid); }
+.backlog-analista-dops .alert-row:last-child { border-bottom:none; }
+.backlog-analista-dops .alert-row:hover { background:var(--surface-2); }
+
 /* Table */
 .table-wrap { overflow-x:auto; }
 table.data { width:100%; border-collapse:collapse; font-size:12.5px; }
