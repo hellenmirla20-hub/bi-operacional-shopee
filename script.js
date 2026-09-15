@@ -499,12 +499,19 @@ if(histRefreshBtn) histRefreshBtn.addEventListener("click", ()=> loadHistorico()
 // não entra — só é considerado "arrastado" quem já passou de um dia.
 let BACKLOG_DATA = [];
 let BACKLOG_LOADED = false;
+// Nomes de analistas (RESPONSÁVEL) com o grupo expandido — persiste entre
+// re-renders (filtro digitado, refresh dos dados do topo, botão Atualizar)
+// pra não fechar o que a usuária já abriu.
+let BACKLOG_EXPANDED = new Set();
 async function loadBacklogAnalise(){
   const el = document.getElementById("backlog-list");
-  if(el) el.innerHTML = '<div class="empty-state">Carregando análise de backlog…</div>';
+  // Igual o Histórico: a aba "Forward" (Backlog OPS) pode ser grande, então
+  // avisamos que pode demorar e damos um timeout bem mais folgado que os
+  // 30s anteriores (estavam estourando o "Tempo esgotado ao buscar dados").
+  if(el) el.innerHTML = '<div class="empty-state">Carregando análise de backlog… (pode levar até um minuto)</div>';
   try{
     const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
-    const json = await fetchViaIframe(API_URL + sep + "tipo=backlog", 30000);
+    const json = await fetchViaIframe(API_URL + sep + "tipo=backlog", 75000);
     BACKLOG_DATA = Array.isArray(json) ? json : (json.backlog || []);
     BACKLOG_LOADED = true;
     renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
@@ -520,6 +527,19 @@ function diaLabel(chave){
 // Só considera, na análise de backlog, os DOPs dentro do escopo ATUAL —
 // respeitando os filtros do topo (Responsável, Estação, Sub-Regional...),
 // igual o Histórico já faz.
+// Monta os "chips" de dias parados (D1 - N pacotes, D2 - N pacotes...) de um
+// DOP — usado dentro de cada grupo de analista, ao expandir.
+function backlogDiasChips(b){
+  return Object.keys(b.dias||{})
+    .sort((a,c)=> (+a.replace("D_","")) - (+c.replace("D_","")))
+    .map(k => {
+      const qtd = b.dias[k];
+      return `<span class="badge warning" style="margin:2px 4px 2px 0;"><span class="ic"></span>${diaLabel(k)} - ${qtd.toLocaleString("pt-BR")} pacote${qtd>1?'s':''}</span>`;
+    }).join("");
+}
+// Agrupado por analista (RESPONSÁVEL): cada linha do topo é um analista com
+// o total de DOPs/pacotes parados sob ele; clicar expande a lista dos DOPs
+// (agência + dias de aging), igual mostrava antes, só que aninhado.
 function renderBacklogAnalise(filtro){
   const el = document.getElementById("backlog-list");
   const badge = document.getElementById("nav-backlog-badge");
@@ -531,33 +551,66 @@ function renderBacklogAnalise(filtro){
   const termo = (filtro||"").trim().toLowerCase();
   const escopoAtual = filtered();
   const dopsEscopo = new Set(escopoAtual.map(d=>String(d.dop)));
-  let linhas = BACKLOG_DATA.filter(b => dopsEscopo.has(String(b.dop)));
+  const respPorDop = new Map(escopoAtual.map(d=>[String(d.dop), d.resp || "Não informado"]));
+  const linhas = BACKLOG_DATA.filter(b => dopsEscopo.has(String(b.dop)));
   if(badge) badge.textContent = linhas.length;
-  if(termo){
-    linhas = linhas.filter(b =>
-      String(b.dop).toLowerCase().includes(termo) ||
-      (b.agencia||"").toLowerCase().includes(termo)
-    );
-  }
   if(!linhas.length){
     el.innerHTML = '<div class="empty-state">Nenhum DOP com pacotes parados (D1+) para os filtros atuais.</div>';
     return;
   }
-  el.innerHTML = linhas.map(b => {
-    const chips = Object.keys(b.dias||{})
-      .sort((a,c)=> (+a.replace("D_","")) - (+c.replace("D_","")))
-      .map(k => {
-        const qtd = b.dias[k];
-        return `<span class="badge warning" style="margin:2px 4px 2px 0;"><span class="ic"></span>${diaLabel(k)} - ${qtd.toLocaleString("pt-BR")} pacote${qtd>1?'s':''}</span>`;
-      }).join("");
-    return `
-      <div class="alert-row" data-dop="${b.dop}" style="grid-template-columns:1.4fr 0.9fr; cursor:pointer; align-items:flex-start;" title="Clique para ver o detalhe de ${b.agencia}">
+  const grupos = new Map();
+  linhas.forEach(b=>{
+    const resp = respPorDop.get(String(b.dop)) || "Não informado";
+    if(!grupos.has(resp)) grupos.set(resp, []);
+    grupos.get(resp).push(b);
+  });
+  let listaGrupos = [...grupos.entries()].map(([resp, rows])=>({
+    resp, rows, totalDops: rows.length, totalArrastado: rows.reduce((s,b)=>s+b.totalArrastado,0)
+  }));
+  if(termo){
+    listaGrupos = listaGrupos
+      .map(g=>{
+        const matchResp = g.resp.toLowerCase().includes(termo);
+        const rows = matchResp ? g.rows : g.rows.filter(b =>
+          String(b.dop).toLowerCase().includes(termo) || (b.agencia||"").toLowerCase().includes(termo));
+        return rows.length ? { resp:g.resp, rows, totalDops: rows.length, totalArrastado: rows.reduce((s,b)=>s+b.totalArrastado,0) } : null;
+      })
+      .filter(Boolean);
+  }
+  listaGrupos.sort((a,b)=> b.totalArrastado - a.totalArrastado);
+  if(!listaGrupos.length){
+    el.innerHTML = '<div class="empty-state">Nenhum DOP com pacotes parados (D1+) para os filtros atuais.</div>';
+    return;
+  }
+  // Com busca ativa, os grupos com resultado abrem sozinhos (pra não
+  // esconder o que foi encontrado); sem busca, respeita o que a usuária
+  // já tinha aberto/fechado manualmente.
+  el.innerHTML = listaGrupos.map(g=>{
+    const aberto = termo ? true : BACKLOG_EXPANDED.has(g.resp);
+    const dopsRows = !aberto ? "" : g.rows.map(b => `
+      <div class="alert-row backlog-dop-row" data-dop="${b.dop}" style="grid-template-columns:1.4fr 0.9fr; cursor:pointer; align-items:flex-start;" title="Clique para ver o detalhe de ${b.agencia}">
         <div><div class="alert-name">${b.agencia}</div><div class="alert-sub">DOP ${b.dop} · ${b.totalArrastado.toLocaleString("pt-BR")} pacote${b.totalArrastado>1?'s':''} parado${b.totalArrastado>1?'s':''}</div></div>
-        <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">${chips}</div>
+        <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">${backlogDiasChips(b)}</div>
+      </div>`).join("");
+    return `
+      <div class="backlog-analista-group">
+        <div class="alert-row backlog-analista-row" data-analista="${g.resp}" style="grid-template-columns:16px 1fr auto; cursor:pointer;">
+          <span class="backlog-caret ${aberto?'open':''}">▸</span>
+          <div><div class="alert-name">${g.resp}</div><div class="alert-sub">${g.totalDops} DOP${g.totalDops>1?'s':''} com pacotes parados</div></div>
+          <span class="badge warning"><span class="ic"></span>${g.totalArrastado.toLocaleString("pt-BR")} pacote${g.totalArrastado>1?'s':''}</span>
+        </div>
+        <div class="backlog-analista-dops"${aberto?"":' style="display:none"'}>${dopsRows}</div>
       </div>`;
   }).join("");
-  el.querySelectorAll(".alert-row[data-dop]").forEach(row=>{
-    row.addEventListener("click", ()=> openDetail(row.dataset.dop));
+  el.querySelectorAll(".backlog-analista-row[data-analista]").forEach(row=>{
+    row.addEventListener("click", ()=>{
+      const resp = row.dataset.analista;
+      if(BACKLOG_EXPANDED.has(resp)) BACKLOG_EXPANDED.delete(resp); else BACKLOG_EXPANDED.add(resp);
+      renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
+    });
+  });
+  el.querySelectorAll(".backlog-dop-row[data-dop]").forEach(row=>{
+    row.addEventListener("click", ev=>{ ev.stopPropagation(); openDetail(row.dataset.dop); });
   });
 }
 const backlogSearchInput = document.getElementById("backlog-search");
