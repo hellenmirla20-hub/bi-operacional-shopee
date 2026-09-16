@@ -627,6 +627,37 @@ function backlogInfoForDop(dop){
   if(!matches.length) return null;
   return matches.reduce((pior, b) => (!pior || b.totalArrastado > pior.totalArrastado) ? b : pior, null);
 }
+// Todas as linhas desse DOP na Análise de Backlog, uma por frente onde ele
+// aparece (normalmente só uma, mas o mesmo DOP pode existir em mais de uma
+// planilha) — usado pro total consolidado de Backlog Envelhecido.
+function backlogAllMatchesForDop(dop){
+  if(!BACKLOG_LOADED || !BACKLOG_DATA.length) return [];
+  const alvo = String(dop).trim().toLowerCase();
+  return BACKLOG_DATA.filter(b => String(b.dop).trim().toLowerCase() === alvo);
+}
+// Monta { frente: totalEnvelhecido } somando todas as linhas desse DOP,
+// já incluindo as três frentes padrão com 0 quando não têm dado, pra sempre
+// mostrar o comparativo completo (Forward/RR/BSC Failed) no Detalhe.
+function backlogEnvelhecidoPorFrente(matches){
+  const porFrente = {};
+  BACKLOG_FRENTE_ORDEM.forEach(f => { porFrente[f] = 0; });
+  matches.forEach(b=>{
+    const frente = b.frente || "Não informado";
+    porFrente[frente] = (porFrente[frente] || 0) + backlogEnvelhecidoFrente(b);
+  });
+  return porFrente;
+}
+// HTML do detalhamento por frente (usado dentro do quadro "Backlog
+// Envelhecido" do Detalhe da Agência) — mesma ordem/cores já usadas na
+// Análise de Backlog (backlogFrenteOrdem/backlogFrenteBadgeClass).
+function backlogEnvelhecidoBreakdownHtml(porFrente){
+  const frentes = [...new Set([...BACKLOG_FRENTE_ORDEM, ...Object.keys(porFrente)])]
+    .sort((a,b)=> backlogFrenteOrdem(a) - backlogFrenteOrdem(b));
+  return frentes.map(f=>{
+    const v = porFrente[f] || 0;
+    return `<div class="backlog-envelhecido-row"><span class="badge ${backlogFrenteBadgeClass(f)}"><span class="ic"></span>${f}</span><span class="val">${v.toLocaleString("pt-BR")}</span></div>`;
+  }).join("");
+}
 // "Envelhecido" = pacotes em D6 pra cima (junta as faixas sério + crítico já
 // usadas nos selos da Análise de Backlog — D1-D5 ainda não é considerado
 // velho o bastante).
@@ -1212,9 +1243,19 @@ function renderDetail(d){
   // "Backlog Envelhecido" e "% Atrasados" vêm de lá em vez da BASE_TRATADA —
   // é a fonte mais atual pros DOPs que ela já está acompanhando por lá.
   const bInfo = backlogInfoForDop(d.dop);
-  const backlogEnvelhecidoValor = bInfo ? backlogEnvelhecidoFrente(bInfo) : d.backlogEnvelhecido;
   const pctAtrasadosValor = bInfo ? backlogPctAtrasadosFrente(bInfo) : d.pctAtrasados;
-  const fonteNota = bInfo ? `<div style="font-size:10px; color:var(--text-muted); margin-top:3px;">Análise de Backlog · ${bInfo.frente}</div>` : "";
+  const fonteNotaAtrasados = bInfo ? `<div style="font-size:10px; color:var(--text-muted); margin-top:3px;">Análise de Backlog · ${bInfo.frente}</div>` : "";
+  // Envelhecido é o TOTAL somando todas as frentes onde esse DOP aparece
+  // (normalmente só uma, mas soma certo se aparecer em mais de uma), com o
+  // detalhamento por frente logo abaixo — mesmo se algumas frentes derem 0.
+  const bMatches = backlogAllMatchesForDop(d.dop);
+  const envelhecidoPorFrente = bMatches.length ? backlogEnvelhecidoPorFrente(bMatches) : null;
+  const backlogEnvelhecidoValor = envelhecidoPorFrente
+    ? Object.values(envelhecidoPorFrente).reduce((s,v)=>s+v,0)
+    : d.backlogEnvelhecido;
+  const envelhecidoBreakdownHtml = envelhecidoPorFrente
+    ? `<div class="backlog-envelhecido-breakdown">${backlogEnvelhecidoBreakdownHtml(envelhecidoPorFrente)}</div>`
+    : "";
   card.innerHTML = `
     <div class="detail-header">
       <div class="dopid">${d.dop}</div>
@@ -1234,8 +1275,8 @@ function renderDetail(d){
       <div class="detail-item"><div class="l">% Same Day Semana</div><div class="v">${pct0(d.sameDaySemana)}</div></div>
       <div class="detail-item"><div class="l">% Same Day Hoje</div><div class="v">${pct0(d.sameDayFlag)}</div></div>
       <div class="detail-item"><div class="l">Inbound / Outbound</div><div class="v">${d.inbound.toLocaleString("pt-BR")} / ${d.outbound.toLocaleString("pt-BR")}</div></div>
-      <div class="detail-item"><div class="l">% Atrasados</div><div class="v">${pctAtrasadosValor.toFixed(1)}%</div>${fonteNota}</div>
-      <div class="detail-item"><div class="l">Backlog Envelhecido</div><div class="v">${backlogEnvelhecidoValor.toLocaleString("pt-BR")}</div>${fonteNota}</div>
+      <div class="detail-item"><div class="l">% Atrasados</div><div class="v">${pctAtrasadosValor.toFixed(1)}%</div>${fonteNotaAtrasados}</div>
+      <div class="detail-item detail-item-wide"><div class="l">Backlog Envelhecido</div><div class="v">${backlogEnvelhecidoValor.toLocaleString("pt-BR")}</div>${envelhecidoBreakdownHtml}</div>
       <div class="detail-item"><div class="l">Pacotes Perdidos</div><div class="v">${d.perdasQtd}</div></div>
       <div class="detail-item"><div class="l">Valor Perdido</div><div class="v">${d.perdasValor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</div></div>
       <div class="detail-item"><div class="l">Status Coleta</div><div class="v" style="font-size:13px">${d.statusColeta}</div></div>
