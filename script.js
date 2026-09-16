@@ -615,6 +615,31 @@ function backlogDiasChips(b){
     return `<span class="badge ${f.cls}"${estilo}><span class="ic"></span>${f.label} · ${qtd.toLocaleString("pt-BR")}</span>`;
   }).join("");
 }
+// Procura esse DOP nos dados de Análise de Backlog (Forward/RR/BSC) — usado
+// pelo Detalhe da Agência pra trazer "Backlog Envelhecido" e "% Atrasados"
+// direto dessa planilha (mais atual pra esses DOPs) em vez da BASE_TRATADA,
+// quando o DOP tiver dado lá. Se o mesmo DOP aparecer em mais de uma frente
+// (raro), usa a mais grave (mais pacotes parados).
+function backlogInfoForDop(dop){
+  if(!BACKLOG_LOADED || !BACKLOG_DATA.length) return null;
+  const alvo = String(dop).trim().toLowerCase();
+  const matches = BACKLOG_DATA.filter(b => String(b.dop).trim().toLowerCase() === alvo);
+  if(!matches.length) return null;
+  return matches.reduce((pior, b) => (!pior || b.totalArrastado > pior.totalArrastado) ? b : pior, null);
+}
+// "Envelhecido" = pacotes em D6 pra cima (junta as faixas sério + crítico já
+// usadas nos selos da Análise de Backlog — D1-D5 ainda não é considerado
+// velho o bastante).
+function backlogEnvelhecidoFrente(b){
+  return Object.entries(b.dias||{}).reduce((s,[k,qtd]) => (+k.replace("D_","")) >= 6 ? s + qtd : s, 0);
+}
+// % do Backlog_total do DOP (coluna da planilha da frente) que já está
+// parado (D1+). Sem Backlog_total > 0 mas com pacote parado, considera 100%
+// (só tem o que está atrasado).
+function backlogPctAtrasadosFrente(b){
+  if(b.backlogTotal > 0) return (b.totalArrastado / b.backlogTotal) * 100;
+  return b.totalArrastado > 0 ? 100 : 0;
+}
 // Agrupado primeiro por FRENTE (Forward/RR/BSC Failed), depois por analista
 // (RESPONSÁVEL) dentro de cada frente: cada linha de analista tem o total de
 // DOPs/pacotes parados sob ele; clicar expande a lista dos DOPs (agência +
@@ -1183,6 +1208,13 @@ function openDetail(dop){
 function renderDetail(d){
   const card = document.getElementById("detail-card");
   if(!d){ card.innerHTML = '<div class="empty-state">Nenhuma agência encontrada.</div>'; return; }
+  // Se esse DOP tiver dado na planilha de frente (Forward/RR/BSC Failed),
+  // "Backlog Envelhecido" e "% Atrasados" vêm de lá em vez da BASE_TRATADA —
+  // é a fonte mais atual pros DOPs que ela já está acompanhando por lá.
+  const bInfo = backlogInfoForDop(d.dop);
+  const backlogEnvelhecidoValor = bInfo ? backlogEnvelhecidoFrente(bInfo) : d.backlogEnvelhecido;
+  const pctAtrasadosValor = bInfo ? backlogPctAtrasadosFrente(bInfo) : d.pctAtrasados;
+  const fonteNota = bInfo ? `<div style="font-size:10px; color:var(--text-muted); margin-top:3px;">Análise de Backlog · ${bInfo.frente}</div>` : "";
   card.innerHTML = `
     <div class="detail-header">
       <div class="dopid">${d.dop}</div>
@@ -1202,8 +1234,8 @@ function renderDetail(d){
       <div class="detail-item"><div class="l">% Same Day Semana</div><div class="v">${pct0(d.sameDaySemana)}</div></div>
       <div class="detail-item"><div class="l">% Same Day Hoje</div><div class="v">${pct0(d.sameDayFlag)}</div></div>
       <div class="detail-item"><div class="l">Inbound / Outbound</div><div class="v">${d.inbound.toLocaleString("pt-BR")} / ${d.outbound.toLocaleString("pt-BR")}</div></div>
-      <div class="detail-item"><div class="l">% Atrasados</div><div class="v">${d.pctAtrasados.toFixed(1)}%</div></div>
-      <div class="detail-item"><div class="l">Backlog Envelhecido</div><div class="v">${d.backlogEnvelhecido}</div></div>
+      <div class="detail-item"><div class="l">% Atrasados</div><div class="v">${pctAtrasadosValor.toFixed(1)}%</div>${fonteNota}</div>
+      <div class="detail-item"><div class="l">Backlog Envelhecido</div><div class="v">${backlogEnvelhecidoValor.toLocaleString("pt-BR")}</div>${fonteNota}</div>
       <div class="detail-item"><div class="l">Pacotes Perdidos</div><div class="v">${d.perdasQtd}</div></div>
       <div class="detail-item"><div class="l">Valor Perdido</div><div class="v">${d.perdasValor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</div></div>
       <div class="detail-item"><div class="l">Status Coleta</div><div class="v" style="font-size:13px">${d.statusColeta}</div></div>
