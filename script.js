@@ -494,46 +494,65 @@ if(histRefreshBtn) histRefreshBtn.addEventListener("click", ()=> loadHistorico()
 // ==================== ANÁLISE DE BACKLOG (pacotes arrastados) ====================
 // Carregado sob demanda (só quando a aba "Análise de Backlog" é aberta pela
 // primeira vez) — mesmo padrão do Histórico. Mostra, por DOP, quantos
-// pacotes estão parados em cada dia de aging (D1 até D15), vindo direto da
-// aba "Forward" da planilha "Gestão da Rotina | PUDO - ELIVAN" via
-// WebApp.gs (?tipo=backlog). D0 ("hoje") não entra — só é considerado
-// "arrastado" quem já passou de um dia. O analista (RESPONSÁVEL) de cada
-// DOP vem direto dessa planilha (coluna "responsavel") — de propósito NÃO
-// cruza com a base principal (BASE_TRATADA) nem com os filtros do topo,
-// então essa aba é independente do resto do painel. Por enquanto só cobre
-// a frente Forward; RR e BSC (que aparecem na mesma planilha, aba
-// Tabela_Forward_RR_BSC) ficam de fora até a usuária ter acesso às
-// planilhas de origem delas.
+// pacotes estão parados em cada dia de aging (D1 até D15), vindo direto das
+// abas "Forward", "RR" e "BSC failed" da planilha "Gestão da Rotina | PUDO -
+// ELIVAN" via WebApp.gs (?tipo=backlog). D0 ("hoje") não entra — só é
+// considerado "arrastado" quem já passou de um dia. O analista (RESPONSÁVEL)
+// de cada DOP vem direto dessa planilha (coluna "responsavel") — de
+// propósito NÃO cruza com a base principal (BASE_TRATADA) nem com os
+// filtros do topo, então essa aba é independente do resto do painel. Cada
+// item de BACKLOG_DATA já vem marcado com "frente" (Forward/RR/BSC Failed)
+// — a lista é agrupada primeiro por frente, depois por analista dentro de
+// cada frente.
 let BACKLOG_DATA = [];
 let BACKLOG_LOADED = false;
-// Nomes de analistas (RESPONSÁVEL) com o grupo expandido — persiste entre
+// Ordem fixa de exibição das frentes; uma frente que apareça nos dados mas
+// não esteja nessa lista vai pro final, em ordem alfabética.
+const BACKLOG_FRENTE_ORDEM = ["Forward", "RR", "BSC Failed"];
+function backlogFrenteOrdem(frente){
+  const i = BACKLOG_FRENTE_ORDEM.indexOf(frente);
+  return i === -1 ? BACKLOG_FRENTE_ORDEM.length : i;
+}
+// Cor do selo de cada frente — Forward laranja (já era o padrão da seção),
+// RR azul (info), BSC Failed vermelho (mais grave, "failed" no nome).
+function backlogFrenteBadgeClass(frente){
+  if(frente === "RR") return "info";
+  if(frente === "BSC Failed") return "serious";
+  return "warning"; // Forward (e qualquer frente nova não mapeada)
+}
+// Chave composta "frente||analista" pros Sets de expandido — evita colisão
+// se o mesmo nome de analista aparecer em mais de uma frente.
+function backlogGrupoKey(frente, resp){ return frente + "||" + resp; }
+// Chaves (frente||analista) com o grupo expandido — persiste entre
 // re-renders (filtro digitado, refresh dos dados do topo, botão Atualizar)
 // pra não fechar o que a usuária já abriu.
 let BACKLOG_EXPANDED = new Set();
 // Dentro de um grupo já aberto, a lista de DOPs também começa "em prévia"
-// (só os primeiros) — nomes de analistas aqui = lista completa mostrada.
+// (só os primeiros) — chaves aqui = lista completa mostrada.
 let BACKLOG_DOPS_EXPANDED = new Set();
 const BACKLOG_DOP_PREVIEW = 6;
-// Filtros próprios dessa seção (Regional/Sub-Regional/Analista) —
-// independentes dos filtros do topo do painel, porque essa aba usa a
-// planilha Forward direto.
-let backlogFilters = { regional:"", subregional:"", analista:"" };
+// Filtros próprios dessa seção (Frente/Regional/Sub-Regional/Analista) —
+// independentes dos filtros do topo do painel, porque essa aba usa as
+// planilhas de frente direto.
+let backlogFilters = { frente:"", regional:"", subregional:"", analista:"" };
 function backlogUniq(rows, field){ return [...new Set(rows.map(d=>d[field]).filter(Boolean))].sort(); }
 // Mesma lógica em cascata do filtro de Notas Fiscais: cada select só mostra
 // as opções que ainda fazem sentido dado o que já foi escolhido nos outros.
 function backlogFilteredExcept(exceptKey){
   return BACKLOG_DATA.filter(d =>
+    (exceptKey==="frente" || !backlogFilters.frente || d.frente===backlogFilters.frente) &&
     (exceptKey==="regional" || !backlogFilters.regional || d.regional===backlogFilters.regional) &&
     (exceptKey==="subregional" || !backlogFilters.subregional || d.subRegional===backlogFilters.subregional) &&
     (exceptKey==="analista" || !backlogFilters.analista || d.resp===backlogFilters.analista)
   );
 }
 function populateBacklogFilters(){
+  populateSelect("backlog-f-frente", backlogUniq(backlogFilteredExcept("frente"),"frente").sort((a,b)=> backlogFrenteOrdem(a)-backlogFrenteOrdem(b)));
   populateSelect("backlog-f-regional", backlogUniq(backlogFilteredExcept("regional"),"regional"));
   populateSelect("backlog-f-subregional", backlogUniq(backlogFilteredExcept("subregional"),"subRegional"));
   populateSelect("backlog-f-analista", backlogUniq(backlogFilteredExcept("analista"),"resp"));
 }
-["regional","subregional","analista"].forEach(k=>{
+["frente","regional","subregional","analista"].forEach(k=>{
   const elSel = document.getElementById("backlog-f-"+k);
   if(elSel) elSel.addEventListener("change", e=>{
     backlogFilters[k]=e.target.value;
@@ -591,9 +610,10 @@ function backlogDiasChips(b){
     return `<span class="badge ${f.cls}"${estilo}><span class="ic"></span>${f.label} · ${qtd.toLocaleString("pt-BR")}</span>`;
   }).join("");
 }
-// Agrupado por analista (RESPONSÁVEL): cada linha do topo é um analista com
-// o total de DOPs/pacotes parados sob ele; clicar expande a lista dos DOPs
-// (agência + dias de aging), igual mostrava antes, só que aninhado.
+// Agrupado primeiro por FRENTE (Forward/RR/BSC Failed), depois por analista
+// (RESPONSÁVEL) dentro de cada frente: cada linha de analista tem o total de
+// DOPs/pacotes parados sob ele; clicar expande a lista dos DOPs (agência +
+// dias de aging), igual mostrava antes, só que agora com mais um nível.
 function renderBacklogAnalise(filtro){
   const el = document.getElementById("backlog-list");
   const badge = document.getElementById("nav-backlog-badge");
@@ -604,10 +624,11 @@ function renderBacklogAnalise(filtro){
   }
   const termo = (filtro||"").trim().toLowerCase();
   // Independente dos filtros do topo (Responsável, Estação, Cidade...) —
-  // essa aba usa a planilha Forward direto, sem cruzar com a base principal
-  // do painel (ver comentário acima). Regional/Sub-Regional têm filtro
-  // próprio (backlogFilters), só dessa seção.
+  // essa aba usa as planilhas de frente direto, sem cruzar com a base
+  // principal do painel (ver comentário acima). Frente/Regional/Sub-Regional/
+  // Analista têm filtro próprio (backlogFilters), só dessa seção.
   const linhas = BACKLOG_DATA.filter(b =>
+    (!backlogFilters.frente || b.frente===backlogFilters.frente) &&
     (!backlogFilters.regional || b.regional===backlogFilters.regional) &&
     (!backlogFilters.subregional || b.subRegional===backlogFilters.subregional) &&
     (!backlogFilters.analista || b.resp===backlogFilters.analista)
@@ -617,82 +638,113 @@ function renderBacklogAnalise(filtro){
     el.innerHTML = '<div class="empty-state">Nenhum DOP com pacotes parados (D1+) para os filtros atuais.</div>';
     return;
   }
-  const grupos = new Map();
-  linhas.forEach(b=>{
-    const resp = b.resp || "Não informado";
-    if(!grupos.has(resp)) grupos.set(resp, []);
-    grupos.get(resp).push(b);
-  });
-  function montaGrupo(resp, rows){
+  // Monta um grupo de analista (usado dentro de cada frente).
+  function montaGrupoAnalista(frente, resp, rows){
     // DOPs mais graves (mais pacotes em D3+) primeiro — é o que importa
     // olhar primeiro dentro do analista.
     const rowsOrdenadas = [...rows].sort((a,b)=> (b.d3Mais - a.d3Mais) || (b.totalArrastado - a.totalArrastado));
     return {
-      resp, rows: rowsOrdenadas, totalDops: rows.length,
+      frente, resp, rows: rowsOrdenadas, totalDops: rows.length,
       totalArrastado: rows.reduce((s,b)=>s+b.totalArrastado,0),
       totalD3Mais: rows.reduce((s,b)=>s+b.d3Mais,0)
     };
   }
-  let listaGrupos = [...grupos.entries()].map(([resp, rows])=> montaGrupo(resp, rows));
-  if(termo){
-    listaGrupos = listaGrupos
-      .map(g=>{
-        const matchResp = g.resp.toLowerCase().includes(termo);
-        const rows = matchResp ? g.rows : g.rows.filter(b =>
-          String(b.dop).toLowerCase().includes(termo) || (b.agencia||"").toLowerCase().includes(termo));
-        return rows.length ? montaGrupo(g.resp, rows) : null;
-      })
-      .filter(Boolean);
+  // Agrupa por frente, e dentro de cada frente por analista.
+  const porFrente = new Map();
+  linhas.forEach(b=>{
+    const frente = b.frente || "Não informado";
+    const resp = b.resp || "Não informado";
+    if(!porFrente.has(frente)) porFrente.set(frente, new Map());
+    const porAnalista = porFrente.get(frente);
+    if(!porAnalista.has(resp)) porAnalista.set(resp, []);
+    porAnalista.get(resp).push(b);
+  });
+  function montaFrentes(porFrenteMap, termo){
+    let frentes = [...porFrenteMap.entries()].map(([frente, porAnalista])=>{
+      let grupos = [...porAnalista.entries()].map(([resp, rows])=> montaGrupoAnalista(frente, resp, rows));
+      if(termo){
+        grupos = grupos
+          .map(g=>{
+            const matchResp = g.resp.toLowerCase().includes(termo);
+            const rows = matchResp ? g.rows : g.rows.filter(b =>
+              String(b.dop).toLowerCase().includes(termo) || (b.agencia||"").toLowerCase().includes(termo));
+            return rows.length ? montaGrupoAnalista(frente, g.resp, rows) : null;
+          })
+          .filter(Boolean);
+      }
+      // Prioriza quem tem mais pacotes em D3+ (o que é crítico agora); total
+      // geral só desempata.
+      grupos.sort((a,b)=> (b.totalD3Mais - a.totalD3Mais) || (b.totalArrastado - a.totalArrastado));
+      return {
+        frente, grupos,
+        totalDops: grupos.reduce((s,g)=>s+g.totalDops,0),
+        totalArrastado: grupos.reduce((s,g)=>s+g.totalArrastado,0),
+        totalD3Mais: grupos.reduce((s,g)=>s+g.totalD3Mais,0)
+      };
+    }).filter(f=> f.grupos.length);
+    // Ordem fixa de frentes (Forward, RR, BSC Failed, depois qualquer outra
+    // em ordem alfabética) — não muda com o resultado da busca/filtro.
+    frentes.sort((a,b)=> backlogFrenteOrdem(a.frente) - backlogFrenteOrdem(b.frente));
+    return frentes;
   }
-  // Prioriza quem tem mais pacotes em D3+ (o que é crítico agora); total
-  // geral só desempata.
-  listaGrupos.sort((a,b)=> (b.totalD3Mais - a.totalD3Mais) || (b.totalArrastado - a.totalArrastado));
-  if(!listaGrupos.length){
+  const listaFrentes = montaFrentes(porFrente, termo);
+  if(!listaFrentes.length){
     el.innerHTML = '<div class="empty-state">Nenhum resultado para essa busca.</div>';
     return;
   }
   // Com busca ativa, os grupos com resultado abrem sozinhos e mostram a
   // lista de DOPs inteira (pra não esconder o que foi encontrado); sem
   // busca, respeita o que a usuária já tinha aberto/fechado manualmente.
-  el.innerHTML = listaGrupos.map(g=>{
-    const aberto = termo ? true : BACKLOG_EXPANDED.has(g.resp);
-    const dopsAbertos = termo ? true : BACKLOG_DOPS_EXPANDED.has(g.resp);
-    const dopsVisiveis = dopsAbertos ? g.rows : g.rows.slice(0, BACKLOG_DOP_PREVIEW);
-    const temMais = g.rows.length > BACKLOG_DOP_PREVIEW;
-    const dopsRowsHtml = !aberto ? "" : dopsVisiveis.map(b => {
-      const local = [b.cidade, b.estacao].filter(Boolean).join(" · ");
+  el.innerHTML = listaFrentes.map(f=>{
+    const gruposHtml = f.grupos.map(g=>{
+      const key = backlogGrupoKey(g.frente, g.resp);
+      const aberto = termo ? true : BACKLOG_EXPANDED.has(key);
+      const dopsAbertos = termo ? true : BACKLOG_DOPS_EXPANDED.has(key);
+      const dopsVisiveis = dopsAbertos ? g.rows : g.rows.slice(0, BACKLOG_DOP_PREVIEW);
+      const temMais = g.rows.length > BACKLOG_DOP_PREVIEW;
+      const dopsRowsHtml = !aberto ? "" : dopsVisiveis.map(b => {
+        const local = [b.cidade, b.estacao].filter(Boolean).join(" · ");
+        return `
+        <div class="alert-row backlog-dop-row" data-dop="${b.dop}" style="grid-template-columns:1.4fr 0.9fr; cursor:pointer; align-items:flex-start;" title="Clique para ver o detalhe de ${b.agencia}">
+          <div><div class="alert-name">${b.agencia}</div><div class="alert-sub">DOP ${b.dop}${local ? " · " + local : ""} · ${b.totalArrastado.toLocaleString("pt-BR")} pacote${b.totalArrastado>1?'s':''} parado${b.totalArrastado>1?'s':''}</div></div>
+          <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">${backlogDiasChips(b)}</div>
+        </div>`;
+      }).join("");
+      const toggleDopsHtml = (!aberto || !temMais) ? "" : `
+        <div class="backlog-dops-toggle" data-key="${key}" style="cursor:pointer; color:var(--brand); font-weight:600; font-size:12px; padding:8px 4px 2px;">
+          ${dopsAbertos ? "− Mostrar menos" : `+ Ver todos os ${g.rows.length} DOPs`}
+        </div>`;
       return `
-      <div class="alert-row backlog-dop-row" data-dop="${b.dop}" style="grid-template-columns:1.4fr 0.9fr; cursor:pointer; align-items:flex-start;" title="Clique para ver o detalhe de ${b.agencia}">
-        <div><div class="alert-name">${b.agencia}</div><div class="alert-sub">DOP ${b.dop}${local ? " · " + local : ""} · ${b.totalArrastado.toLocaleString("pt-BR")} pacote${b.totalArrastado>1?'s':''} parado${b.totalArrastado>1?'s':''}</div></div>
-        <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">${backlogDiasChips(b)}</div>
-      </div>`;
+        <div class="backlog-analista-group">
+          <div class="alert-row backlog-analista-row" data-key="${key}" style="grid-template-columns:16px 1fr auto; cursor:pointer;">
+            <span class="backlog-caret ${aberto?'open':''}">▸</span>
+            <div><div class="alert-name">${g.resp}</div><div class="alert-sub">${g.totalDops} DOP${g.totalDops>1?'s':''} · ${g.totalArrastado.toLocaleString("pt-BR")} parado${g.totalArrastado>1?'s':''} no total</div></div>
+            <span class="badge ${g.totalD3Mais>0 ? 'critical' : 'good'}"><span class="ic"></span>${g.totalD3Mais>0 ? g.totalD3Mais.toLocaleString("pt-BR") + " em D3+" : "sem D3+"}</span>
+          </div>
+          <div class="backlog-analista-dops"${aberto?"":' style="display:none"'}>${dopsRowsHtml}${toggleDopsHtml}</div>
+        </div>`;
     }).join("");
-    const toggleDopsHtml = (!aberto || !temMais) ? "" : `
-      <div class="backlog-dops-toggle" data-analista="${g.resp}" style="cursor:pointer; color:var(--brand); font-weight:600; font-size:12px; padding:8px 4px 2px;">
-        ${dopsAbertos ? "− Mostrar menos" : `+ Ver todos os ${g.rows.length} DOPs`}
-      </div>`;
     return `
-      <div class="backlog-analista-group">
-        <div class="alert-row backlog-analista-row" data-analista="${g.resp}" style="grid-template-columns:16px 1fr auto; cursor:pointer;">
-          <span class="backlog-caret ${aberto?'open':''}">▸</span>
-          <div><div class="alert-name">${g.resp}</div><div class="alert-sub">${g.totalDops} DOP${g.totalDops>1?'s':''} · ${g.totalArrastado.toLocaleString("pt-BR")} parado${g.totalArrastado>1?'s':''} no total</div></div>
-          <span class="badge ${g.totalD3Mais>0 ? 'critical' : 'good'}"><span class="ic"></span>${g.totalD3Mais>0 ? g.totalD3Mais.toLocaleString("pt-BR") + " em D3+" : "sem D3+"}</span>
+      <div class="backlog-frente-group">
+        <div class="backlog-frente-head">
+          <span class="badge ${backlogFrenteBadgeClass(f.frente)}"><span class="ic"></span>${f.frente}</span>
+          <span class="backlog-frente-summary">${f.totalDops} DOP${f.totalDops>1?'s':''} · ${f.totalArrastado.toLocaleString("pt-BR")} parado${f.totalArrastado>1?'s':''} · ${f.totalD3Mais>0 ? f.totalD3Mais.toLocaleString("pt-BR") + " em D3+" : "sem D3+"}</span>
         </div>
-        <div class="backlog-analista-dops"${aberto?"":' style="display:none"'}>${dopsRowsHtml}${toggleDopsHtml}</div>
+        ${gruposHtml}
       </div>`;
   }).join("");
-  el.querySelectorAll(".backlog-analista-row[data-analista]").forEach(row=>{
+  el.querySelectorAll(".backlog-analista-row[data-key]").forEach(row=>{
     row.addEventListener("click", ()=>{
-      const resp = row.dataset.analista;
-      if(BACKLOG_EXPANDED.has(resp)) BACKLOG_EXPANDED.delete(resp); else BACKLOG_EXPANDED.add(resp);
+      const key = row.dataset.key;
+      if(BACKLOG_EXPANDED.has(key)) BACKLOG_EXPANDED.delete(key); else BACKLOG_EXPANDED.add(key);
       renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
     });
   });
-  el.querySelectorAll(".backlog-dops-toggle[data-analista]").forEach(row=>{
+  el.querySelectorAll(".backlog-dops-toggle[data-key]").forEach(row=>{
     row.addEventListener("click", ev=>{
       ev.stopPropagation();
-      const resp = row.dataset.analista;
-      if(BACKLOG_DOPS_EXPANDED.has(resp)) BACKLOG_DOPS_EXPANDED.delete(resp); else BACKLOG_DOPS_EXPANDED.add(resp);
+      const key = row.dataset.key;
+      if(BACKLOG_DOPS_EXPANDED.has(key)) BACKLOG_DOPS_EXPANDED.delete(key); else BACKLOG_DOPS_EXPANDED.add(key);
       renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
     });
   });
