@@ -134,6 +134,8 @@ a { color: inherit; }
 .badge.serious { color: #9c4322; background: var(--serious-bg); }
 [data-theme="dark"] .badge.serious { color: var(--serious); }
 .badge.critical { color: var(--critical); background: var(--critical-bg); }
+.badge.info { color: var(--series-1); background: rgba(42,120,214,0.12); }
+[data-theme="dark"] .badge.info { background: rgba(57,135,229,0.16); }
 
 /* Alert rows */
 .alert-row { display:grid; grid-template-columns: 3px 1.6fr 0.7fr 1.1fr 0.7fr; gap:10px; align-items:center; padding:9px 4px; border-bottom:1px solid var(--grid); font-size:12.5px; }
@@ -144,7 +146,12 @@ a { color: inherit; }
 .col-head { font-size:10.5px; text-transform:uppercase; color:var(--text-muted); letter-spacing:.04em; padding:2px 4px 8px; }
 .rank-num { width:18px; height:18px; border-radius:5px; background:var(--grid); color:var(--text-secondary); font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; }
 
-/* Análise de Backlog — grupos por analista (drill-down) */
+/* Análise de Backlog — grupos por frente (Forward/RR/BSC Failed), cada um
+   com seus grupos por analista dentro (drill-down) */
+.backlog-frente-group { margin-bottom:18px; }
+.backlog-frente-group:last-child { margin-bottom:0; }
+.backlog-frente-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:6px 4px 10px; border-bottom:1px solid var(--border); margin-bottom:2px; }
+.backlog-frente-summary { font-size:11.5px; color:var(--text-muted); }
 .backlog-analista-group { border-bottom:1px solid var(--grid); }
 .backlog-analista-group:last-child { border-bottom:none; }
 .backlog-analista-row { border-bottom:none; border-radius:8px; }
