@@ -531,6 +531,11 @@ let BACKLOG_EXPANDED = new Set();
 // (só os primeiros) — chaves aqui = lista completa mostrada.
 let BACKLOG_DOPS_EXPANDED = new Set();
 const BACKLOG_DOP_PREVIEW = 6;
+// Dentro de cada quadrinho de frente, a lista de analistas também começa
+// "em prévia" (mesmo padrão acima, um nível para cima) — frente com o nome
+// aqui = lista completa de analistas mostrada, em vez de só os primeiros.
+let BACKLOG_FRENTES_EXPANDED = new Set();
+const BACKLOG_ANALISTA_PREVIEW = 8;
 // Filtros próprios dessa seção (Frente/Regional/Sub-Regional/Analista) —
 // independentes dos filtros do topo do painel, porque essa aba usa as
 // planilhas de frente direto.
@@ -696,7 +701,14 @@ function renderBacklogAnalise(filtro){
   // lista de DOPs inteira (pra não esconder o que foi encontrado); sem
   // busca, respeita o que a usuária já tinha aberto/fechado manualmente.
   el.innerHTML = listaFrentes.map(f=>{
-    const gruposHtml = f.grupos.map(g=>{
+    // Com busca ativa mostra todos os analistas da frente que bateram (senão
+    // esconderia resultado); sem busca, respeita o que a usuária já expandiu
+    // "Ver todos os analistas" nesse quadrinho — senão só os primeiros
+    // BACKLOG_ANALISTA_PREVIEW, pra não virar uma lista gigante na tela.
+    const analistasAbertos = termo ? true : BACKLOG_FRENTES_EXPANDED.has(f.frente);
+    const gruposVisiveis = analistasAbertos ? f.grupos : f.grupos.slice(0, BACKLOG_ANALISTA_PREVIEW);
+    const temMaisAnalistas = f.grupos.length > BACKLOG_ANALISTA_PREVIEW;
+    const gruposHtml = gruposVisiveis.map(g=>{
       const key = backlogGrupoKey(g.frente, g.resp);
       const aberto = termo ? true : BACKLOG_EXPANDED.has(key);
       const dopsAbertos = termo ? true : BACKLOG_DOPS_EXPANDED.has(key);
@@ -724,6 +736,10 @@ function renderBacklogAnalise(filtro){
           <div class="backlog-analista-dops"${aberto?"":' style="display:none"'}>${dopsRowsHtml}${toggleDopsHtml}</div>
         </div>`;
     }).join("");
+    const toggleAnalistasHtml = (!temMaisAnalistas) ? "" : `
+      <div class="backlog-analistas-toggle" data-frente="${f.frente}">
+        ${analistasAbertos ? "− Mostrar menos analistas" : `+ Ver todos os ${f.grupos.length} analistas`}
+      </div>`;
     return `
       <div class="backlog-frente-group">
         <div class="backlog-frente-head">
@@ -731,6 +747,7 @@ function renderBacklogAnalise(filtro){
           <span class="backlog-frente-summary">${f.totalDops} DOP${f.totalDops>1?'s':''} · ${f.totalArrastado.toLocaleString("pt-BR")} parado${f.totalArrastado>1?'s':''} · ${f.totalD3Mais>0 ? f.totalD3Mais.toLocaleString("pt-BR") + " em D3+" : "sem D3+"}</span>
         </div>
         ${gruposHtml}
+        ${toggleAnalistasHtml}
       </div>`;
   }).join("");
   el.querySelectorAll(".backlog-analista-row[data-key]").forEach(row=>{
@@ -750,6 +767,13 @@ function renderBacklogAnalise(filtro){
   });
   el.querySelectorAll(".backlog-dop-row[data-dop]").forEach(row=>{
     row.addEventListener("click", ev=>{ ev.stopPropagation(); openDetail(row.dataset.dop); });
+  });
+  el.querySelectorAll(".backlog-analistas-toggle[data-frente]").forEach(row=>{
+    row.addEventListener("click", ()=>{
+      const frente = row.dataset.frente;
+      if(BACKLOG_FRENTES_EXPANDED.has(frente)) BACKLOG_FRENTES_EXPANDED.delete(frente); else BACKLOG_FRENTES_EXPANDED.add(frente);
+      renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
+    });
   });
 }
 const backlogSearchInput = document.getElementById("backlog-search");
