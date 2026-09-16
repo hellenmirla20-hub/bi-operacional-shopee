@@ -510,23 +510,30 @@ let BACKLOG_LOADED = false;
 // re-renders (filtro digitado, refresh dos dados do topo, botão Atualizar)
 // pra não fechar o que a usuária já abriu.
 let BACKLOG_EXPANDED = new Set();
-// Filtros próprios dessa seção (Regional/Sub-Regional) — independentes dos
-// filtros do topo do painel, porque essa aba usa a planilha Forward direto.
-let backlogFilters = { regional:"", subregional:"" };
+// Dentro de um grupo já aberto, a lista de DOPs também começa "em prévia"
+// (só os primeiros) — nomes de analistas aqui = lista completa mostrada.
+let BACKLOG_DOPS_EXPANDED = new Set();
+const BACKLOG_DOP_PREVIEW = 6;
+// Filtros próprios dessa seção (Regional/Sub-Regional/Analista) —
+// independentes dos filtros do topo do painel, porque essa aba usa a
+// planilha Forward direto.
+let backlogFilters = { regional:"", subregional:"", analista:"" };
 function backlogUniq(rows, field){ return [...new Set(rows.map(d=>d[field]).filter(Boolean))].sort(); }
 // Mesma lógica em cascata do filtro de Notas Fiscais: cada select só mostra
-// as opções que ainda fazem sentido dado o que já foi escolhido no outro.
+// as opções que ainda fazem sentido dado o que já foi escolhido nos outros.
 function backlogFilteredExcept(exceptKey){
   return BACKLOG_DATA.filter(d =>
     (exceptKey==="regional" || !backlogFilters.regional || d.regional===backlogFilters.regional) &&
-    (exceptKey==="subregional" || !backlogFilters.subregional || d.subRegional===backlogFilters.subregional)
+    (exceptKey==="subregional" || !backlogFilters.subregional || d.subRegional===backlogFilters.subregional) &&
+    (exceptKey==="analista" || !backlogFilters.analista || d.resp===backlogFilters.analista)
   );
 }
 function populateBacklogFilters(){
   populateSelect("backlog-f-regional", backlogUniq(backlogFilteredExcept("regional"),"regional"));
   populateSelect("backlog-f-subregional", backlogUniq(backlogFilteredExcept("subregional"),"subRegional"));
+  populateSelect("backlog-f-analista", backlogUniq(backlogFilteredExcept("analista"),"resp"));
 }
-["regional","subregional"].forEach(k=>{
+["regional","subregional","analista"].forEach(k=>{
   const elSel = document.getElementById("backlog-f-"+k);
   if(elSel) elSel.addEventListener("change", e=>{
     backlogFilters[k]=e.target.value;
@@ -556,15 +563,33 @@ async function loadBacklogAnalise(){
 function diaLabel(chave){
   return chave.replace("D_", "D");
 }
-// Monta os "chips" de dias parados (D1 - N pacotes, D2 - N pacotes...) de um
-// DOP — usado dentro de cada grupo de analista, ao expandir.
+// A partir de D3 é considerado crítico (combinado com a usuária) — D1/D2
+// ainda não. Soma tudo que for D3 pra cima, de um DOP.
+function backlogD3Mais(b){
+  return Object.entries(b.dias||{}).reduce((s,[k,qtd]) => (+k.replace("D_","")) >= 3 ? s + qtd : s, 0);
+}
+// Em vez de um selo por dia (D1, D2, D3... até D15 — poluído demais), agrupa
+// em faixas de severidade: D1-D2 (ainda não crítico, cinza/discreto),
+// D3-D5 (atenção), D6-D10 (sério), D11+ (crítico). Cada DOP mostra no máximo
+// 4 selos em vez de até 15.
 function backlogDiasChips(b){
-  return Object.keys(b.dias||{})
-    .sort((a,c)=> (+a.replace("D_","")) - (+c.replace("D_","")))
-    .map(k => {
-      const qtd = b.dias[k];
-      return `<span class="badge warning" style="margin:2px 4px 2px 0;"><span class="ic"></span>${diaLabel(k)} - ${qtd.toLocaleString("pt-BR")} pacote${qtd>1?'s':''}</span>`;
-    }).join("");
+  const dias = b.dias || {};
+  const faixa = (lo,hi) => Object.entries(dias).reduce((s,[k,qtd])=>{
+    const n = +k.replace("D_","");
+    return (n>=lo && n<=hi) ? s+qtd : s;
+  },0);
+  const faixas = [
+    { lo:1, hi:2, cls:"good", label:"D1-D2", mute:true },
+    { lo:3, hi:5, cls:"warning", label:"D3-D5" },
+    { lo:6, hi:10, cls:"serious", label:"D6-D10" },
+    { lo:11, hi:999, cls:"critical", label:"D11+" }
+  ];
+  return faixas.map(f=>{
+    const qtd = faixa(f.lo, f.hi);
+    if(qtd<=0) return "";
+    const estilo = f.mute ? ' style="margin:2px 4px 2px 0; opacity:.7;"' : ' style="margin:2px 4px 2px 0;"';
+    return `<span class="badge ${f.cls}"${estilo}><span class="ic"></span>${f.label} · ${qtd.toLocaleString("pt-BR")}</span>`;
+  }).join("");
 }
 // Agrupado por analista (RESPONSÁVEL): cada linha do topo é um analista com
 // o total de DOPs/pacotes parados sob ele; clicar expande a lista dos DOPs
@@ -584,8 +609,9 @@ function renderBacklogAnalise(filtro){
   // próprio (backlogFilters), só dessa seção.
   const linhas = BACKLOG_DATA.filter(b =>
     (!backlogFilters.regional || b.regional===backlogFilters.regional) &&
-    (!backlogFilters.subregional || b.subRegional===backlogFilters.subregional)
-  );
+    (!backlogFilters.subregional || b.subRegional===backlogFilters.subregional) &&
+    (!backlogFilters.analista || b.resp===backlogFilters.analista)
+  ).map(b => ({ ...b, d3Mais: backlogD3Mais(b) }));
   if(badge) badge.textContent = linhas.length;
   if(!linhas.length){
     el.innerHTML = '<div class="empty-state">Nenhum DOP com pacotes parados (D1+) para os filtros atuais.</div>';
@@ -597,30 +623,43 @@ function renderBacklogAnalise(filtro){
     if(!grupos.has(resp)) grupos.set(resp, []);
     grupos.get(resp).push(b);
   });
-  let listaGrupos = [...grupos.entries()].map(([resp, rows])=>({
-    resp, rows, totalDops: rows.length, totalArrastado: rows.reduce((s,b)=>s+b.totalArrastado,0)
-  }));
+  function montaGrupo(resp, rows){
+    // DOPs mais graves (mais pacotes em D3+) primeiro — é o que importa
+    // olhar primeiro dentro do analista.
+    const rowsOrdenadas = [...rows].sort((a,b)=> (b.d3Mais - a.d3Mais) || (b.totalArrastado - a.totalArrastado));
+    return {
+      resp, rows: rowsOrdenadas, totalDops: rows.length,
+      totalArrastado: rows.reduce((s,b)=>s+b.totalArrastado,0),
+      totalD3Mais: rows.reduce((s,b)=>s+b.d3Mais,0)
+    };
+  }
+  let listaGrupos = [...grupos.entries()].map(([resp, rows])=> montaGrupo(resp, rows));
   if(termo){
     listaGrupos = listaGrupos
       .map(g=>{
         const matchResp = g.resp.toLowerCase().includes(termo);
         const rows = matchResp ? g.rows : g.rows.filter(b =>
           String(b.dop).toLowerCase().includes(termo) || (b.agencia||"").toLowerCase().includes(termo));
-        return rows.length ? { resp:g.resp, rows, totalDops: rows.length, totalArrastado: rows.reduce((s,b)=>s+b.totalArrastado,0) } : null;
+        return rows.length ? montaGrupo(g.resp, rows) : null;
       })
       .filter(Boolean);
   }
-  listaGrupos.sort((a,b)=> b.totalArrastado - a.totalArrastado);
+  // Prioriza quem tem mais pacotes em D3+ (o que é crítico agora); total
+  // geral só desempata.
+  listaGrupos.sort((a,b)=> (b.totalD3Mais - a.totalD3Mais) || (b.totalArrastado - a.totalArrastado));
   if(!listaGrupos.length){
     el.innerHTML = '<div class="empty-state">Nenhum resultado para essa busca.</div>';
     return;
   }
-  // Com busca ativa, os grupos com resultado abrem sozinhos (pra não
-  // esconder o que foi encontrado); sem busca, respeita o que a usuária
-  // já tinha aberto/fechado manualmente.
+  // Com busca ativa, os grupos com resultado abrem sozinhos e mostram a
+  // lista de DOPs inteira (pra não esconder o que foi encontrado); sem
+  // busca, respeita o que a usuária já tinha aberto/fechado manualmente.
   el.innerHTML = listaGrupos.map(g=>{
     const aberto = termo ? true : BACKLOG_EXPANDED.has(g.resp);
-    const dopsRows = !aberto ? "" : g.rows.map(b => {
+    const dopsAbertos = termo ? true : BACKLOG_DOPS_EXPANDED.has(g.resp);
+    const dopsVisiveis = dopsAbertos ? g.rows : g.rows.slice(0, BACKLOG_DOP_PREVIEW);
+    const temMais = g.rows.length > BACKLOG_DOP_PREVIEW;
+    const dopsRowsHtml = !aberto ? "" : dopsVisiveis.map(b => {
       const local = [b.cidade, b.estacao].filter(Boolean).join(" · ");
       return `
       <div class="alert-row backlog-dop-row" data-dop="${b.dop}" style="grid-template-columns:1.4fr 0.9fr; cursor:pointer; align-items:flex-start;" title="Clique para ver o detalhe de ${b.agencia}">
@@ -628,20 +667,32 @@ function renderBacklogAnalise(filtro){
         <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">${backlogDiasChips(b)}</div>
       </div>`;
     }).join("");
+    const toggleDopsHtml = (!aberto || !temMais) ? "" : `
+      <div class="backlog-dops-toggle" data-analista="${g.resp}" style="cursor:pointer; color:var(--brand); font-weight:600; font-size:12px; padding:8px 4px 2px;">
+        ${dopsAbertos ? "− Mostrar menos" : `+ Ver todos os ${g.rows.length} DOPs`}
+      </div>`;
     return `
       <div class="backlog-analista-group">
         <div class="alert-row backlog-analista-row" data-analista="${g.resp}" style="grid-template-columns:16px 1fr auto; cursor:pointer;">
           <span class="backlog-caret ${aberto?'open':''}">▸</span>
-          <div><div class="alert-name">${g.resp}</div><div class="alert-sub">${g.totalDops} DOP${g.totalDops>1?'s':''} com pacotes parados</div></div>
-          <span class="badge warning"><span class="ic"></span>${g.totalArrastado.toLocaleString("pt-BR")} pacote${g.totalArrastado>1?'s':''}</span>
+          <div><div class="alert-name">${g.resp}</div><div class="alert-sub">${g.totalDops} DOP${g.totalDops>1?'s':''} · ${g.totalArrastado.toLocaleString("pt-BR")} parado${g.totalArrastado>1?'s':''} no total</div></div>
+          <span class="badge ${g.totalD3Mais>0 ? 'critical' : 'good'}"><span class="ic"></span>${g.totalD3Mais>0 ? g.totalD3Mais.toLocaleString("pt-BR") + " em D3+" : "sem D3+"}</span>
         </div>
-        <div class="backlog-analista-dops"${aberto?"":' style="display:none"'}>${dopsRows}</div>
+        <div class="backlog-analista-dops"${aberto?"":' style="display:none"'}>${dopsRowsHtml}${toggleDopsHtml}</div>
       </div>`;
   }).join("");
   el.querySelectorAll(".backlog-analista-row[data-analista]").forEach(row=>{
     row.addEventListener("click", ()=>{
       const resp = row.dataset.analista;
       if(BACKLOG_EXPANDED.has(resp)) BACKLOG_EXPANDED.delete(resp); else BACKLOG_EXPANDED.add(resp);
+      renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
+    });
+  });
+  el.querySelectorAll(".backlog-dops-toggle[data-analista]").forEach(row=>{
+    row.addEventListener("click", ev=>{
+      ev.stopPropagation();
+      const resp = row.dataset.analista;
+      if(BACKLOG_DOPS_EXPANDED.has(resp)) BACKLOG_DOPS_EXPANDED.delete(resp); else BACKLOG_DOPS_EXPANDED.add(resp);
       renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
     });
   });
