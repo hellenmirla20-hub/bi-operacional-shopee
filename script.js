@@ -658,11 +658,12 @@ function backlogEnvelhecidoBreakdownHtml(porFrente){
     return `<div class="backlog-envelhecido-row"><span class="badge ${backlogFrenteBadgeClass(f)}"><span class="ic"></span>${f}</span><span class="val">${v.toLocaleString("pt-BR")}</span></div>`;
   }).join("");
 }
-// "Envelhecido" = pacotes em D6 pra cima (junta as faixas sério + crítico já
-// usadas nos selos da Análise de Backlog — D1-D5 ainda não é considerado
-// velho o bastante).
+// "Envelhecido" = pacotes em D3 pra cima — mesmo corte de "crítico" já
+// combinado pra prioridade na Análise de Backlog (D1-D2 ainda não é
+// considerado envelhecido/crítico). Mesma soma de backlogD3Mais, só que
+// calculada direto (essa função é usada antes de o objeto ganhar d3Mais).
 function backlogEnvelhecidoFrente(b){
-  return Object.entries(b.dias||{}).reduce((s,[k,qtd]) => (+k.replace("D_","")) >= 6 ? s + qtd : s, 0);
+  return backlogD3Mais(b);
 }
 // % do Backlog_total do DOP (coluna da planilha da frente) que já está
 // parado (D1+). Sem Backlog_total > 0 mas com pacote parado, considera 100%
