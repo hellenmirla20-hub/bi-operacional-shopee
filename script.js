@@ -1,1228 +1,250 @@
-const CATS = ["#2a78d6","#eb6834","#1baf7a","#eda100","#e87ba4","#008300","#4a3aa7","#e34948"];
-function num(v){ return (v===null||v===undefined||isNaN(v)) ? 0 : +v; }
-function pct(v){ return (num(v)*100).toFixed(1)+"%"; }
-function pct0(v){ return (num(v)*100).toFixed(0)+"%"; }
-function riskClass(r){
-  if(!r) return "warning";
-  r = r.toUpperCase();
-  if(r.includes("BOM")||r.includes("OK")) return "good";
-  if(r.includes("CRÍT")||r.includes("CRIT")) return "critical";
-  return "warning";
+:root {
+  color-scheme: light;
+  --surface-1:      #fcfcfb;
+  --surface-2:      #ffffff;
+  --page:           #f9f9f7;
+  --sidebar:        #ffffff;
+  --sidebar-ink:    #52514e;
+  --text-primary:   #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted:     #898781;
+  --grid:           #e1e0d9;
+  --baseline:       #c3c2b7;
+  --border:         rgba(11,11,11,0.16);
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+  --series-5: #e87ba4; --series-6: #008300; --series-7: #4a3aa7; --series-8: #e34948;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --good-bg: rgba(12,163,12,0.12); --warning-bg: rgba(250,178,25,0.16);
+  --serious-bg: rgba(236,131,90,0.16); --critical-bg: rgba(208,59,59,0.12);
+  --success-text: #006300;
+  --brand: #ee4d2d; --brand-ink: #ffffff; --brand-bg: rgba(238,77,45,0.10);
+  --brand-2: #ff7a3d;
 }
-function coletaClass(s){
-  if(!s) return "warning";
-  s = s.toUpperCase();
-  if(s.includes("COLETOU")) return "good";
-  if(s.includes("3+")) return "critical";
-  return "warning";
+[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-1:      #1a1a19;
+  --surface-2:      #202020;
+  --page:           #0d0d0d;
+  --sidebar:        #111111;
+  --sidebar-ink:    #d8d7d2;
+  --text-primary:   #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted:     #898781;
+  --grid:           #2c2c2a;
+  --baseline:       #383835;
+  --border:         rgba(255,255,255,0.10);
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --good-bg: rgba(12,163,12,0.18); --warning-bg: rgba(250,178,25,0.20);
+  --serious-bg: rgba(236,131,90,0.20); --critical-bg: rgba(208,59,59,0.20);
+  --success-text: #0ca30c;
+  --brand: #ff6b45; --brand-ink: #ffffff; --brand-bg: rgba(255,107,69,0.16);
+  --brand-2: #ff8f66;
 }
-// normalize rows
-// ==================== FONTE DE DADOS AO VIVO ====================
-// Cole aqui a URL do Web App do Apps Script (Deploy > New deployment > Web app).
-// Veja instruções completas no arquivo DEPLOY.md.
-const API_URL = "https://script.google.com/a/macros/shopee.com/s/AKfycbyAlO5tzyNj2xxOjZDRkT8GNov5h9HwEjaRHOvPypVwYkymldkqCXbY15lSIduc1UNTNQ/exec";
-const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // busca dados novos a cada 5 minutos
-let DATA = [];
-let filters = { resp:"", subreg:"", cidade:"", estacao:"", statuscoleta:"", risco:"" };
-// Estado de expansão dos cards "ver todas / ver ranking completo" do Resumo
-// Geral — cada card colapsa para um preview curto por padrão e expande pra
-// lista completa quando o link/botão é clicado (some ao clicar de novo).
-let CURRENT_ROWS = [];
-const expandState = { alerts:false, fifoResumo:false, sdResumo:false };
-function wireExpandToggle(topId, bottomId, stateKey, onToggle){
-  const top = document.getElementById(topId), bottom = document.getElementById(bottomId);
-  const handler = ()=>{ expandState[stateKey] = !expandState[stateKey]; onToggle(); };
-  if(top) top.addEventListener("click", handler);
-  if(bottom) bottom.addEventListener("click", handler);
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--page);
+  color: var(--text-primary);
+  font-size: 14px;
 }
-function normalizeRows(raw){
-  return raw.map(r => ({
-    dop: r["DOP"], resp: r["RESPONSÁVEL"]||"Não informado", agencia: r["AGÊNCIA"]||r["NOME FANTASIA"]||"—",
-    fantasia: r["NOME FANTASIA"]||r["AGÊNCIA"]||"—",
-    cidade: r["CIDADE"]||"Não informado", estado: r["ESTADO"]||"Não informado", subreg: r["SUB-REGIONAL"]||"Não informado",
-    estacao: r["CÓDIGO DA ESTAÇÃO"]||"Não informado",
-    backlog: num(r["BACKLOG"]), backlogOps: num(r["BACKLOG TOTAL (OPS)"]),
-    inbound: num(r["INBOUND"]), outbound: num(r["OUTBOUND"]),
-    fifoHojeFlag: num(r["FIFO HOJE"]), sameDayFlag: num(r["SAME DAY"]),
-    fifoSemana: num(r["FIFO SEMANA"]), sameDaySemana: num(r["SAME DAY SEMANA"]),
-    lost: num(r["LOST"]), pctAtrasados: num(r["% ATRASADOS"]),
-    perdasQtd: num(r["QTD PACOTES PERDIDOS"]), perdasValor: num(r["VALOR PERDIDO (R$)"]),
-    backlogEnvelhecido: num(r["BACKLOG ENVELHECIDO"]), totalAtrasados: num(r["TOTAL ATRASADOS"]),
-    statusColeta: r["STATUS COLETA"]||"—", horasSemColeta: num(r["HORAS SEM COLETA"]),
-    agingSemColeta: num(r["AGING SEM COLETA"]), ultimaColeta: r["ULTIMA COLETA"],
-    risco: r["RISCO OPERACIONAL"]||"—",
-    status: r["STATUS"]||"—", maturacao: r["MATURAÇÃO"]||"—", tevecoleta: r["TEVE_COLETA"]||"—",
-    data: r["DATA"]
-  }));
+a { color: inherit; }
+.app { display:flex; min-height:100vh; }
+
+/* Sidebar */
+.sidebar {
+  width: 236px; flex-shrink:0; background: var(--sidebar); color: var(--sidebar-ink);
+  padding: 20px 14px; display:flex; flex-direction:column; gap: 4px;
+  border-right: 1px solid var(--border);
 }
-function uniq(field){ return [...new Set(DATA.map(d=>d[field]).filter(v=>v && v!=="—"))].sort(); }
-function populateSelect(id, values){
-  const sel = document.getElementById(id);
-  const current = sel.value;
-  const emptyLabel = sel.dataset.empty || "Todos";
-  sel.innerHTML = `<option value="">${emptyLabel}</option>`;
-  values.forEach(v=>{ const o=document.createElement("option"); o.value=v; o.textContent=v; sel.appendChild(o); });
-  if(values.includes(current)) sel.value = current;
+.brand { display:flex; align-items:center; gap:10px; padding: 4px 8px 18px; }
+.brand-icon { width:36px; height:36px; border-radius:9px; background:#ffffff; display:flex; align-items:center; justify-content:center; font-weight:700; color:#fff; font-size:15px; overflow:hidden; box-shadow:0 0 0 1px var(--border); }
+.brand-text .t1 { font-weight:600; font-size:9.5px; line-height:1.3; letter-spacing:.06em; text-transform:uppercase; color: var(--text-muted); }
+.brand-text .t2 { font-size:16px; letter-spacing:0; color: var(--brand); font-weight:800; line-height:1.2; }
+.nav-item { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:8px; cursor:pointer; font-size:13.3px; color: var(--sidebar-ink); }
+.nav-item:hover { background: rgba(11,11,11,0.05); }
+.nav-item.active { background: var(--brand); color:#fff; font-weight:600; }
+.nav-item .dot { width:7px;height:7px;border-radius:50%; background: currentColor; opacity:.5; }
+.nav-badge { margin-left:auto; background: var(--critical); color:#fff; font-size:10.5px; font-weight:700; padding:1px 6px; border-radius:20px; }
+.sidebar-foot { margin-top:auto; padding-top:14px; border-top:1px solid var(--border); }
+.sidebar-foot-label { font-size:10.5px; color:var(--text-muted); padding:8px 10px 4px; }
+[data-theme="dark"] .nav-item:hover { background: rgba(255,255,255,0.06); }
+.resp-row { display:flex; align-items:center; gap:8px; padding:6px 10px; font-size:12.5px; }
+.avatar { width:22px;height:22px;border-radius:50%; display:flex;align-items:center;justify-content:center; font-size:11px; font-weight:700; color:#fff; }
+
+/* Main */
+.main { flex:1; min-width:0; padding: 18px 22px 40px; }
+.topbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px; }
+.filter { background: var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:7px 12px; font-size:12.5px; color:var(--text-secondary); min-width:150px; }
+.filter select, .filter input { border:none; background:transparent; font-size:13px; color:var(--text-primary); width:100%; outline:none; font-family:inherit; }
+.filter label { display:block; font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); margin-bottom:1px; }
+.topbar .spacer { flex:1; }
+.update-chip { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-muted); background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:7px 12px; }
+.theme-btn { border:1px solid var(--border); background:var(--surface-2); border-radius:6px; padding:7px 11px; cursor:pointer; font-size:12.5px; color:var(--text-secondary); }
+.theme-btn.primary { background: var(--brand); border-color: var(--brand); color:#fff; font-weight:600; }
+
+.section { display:none; }
+.section.active { display:block; }
+
+/* KPI cards */
+.kpi-grid { display:grid; grid-template-columns: repeat(6, 1fr); gap:12px; margin-bottom:12px; }
+@media (max-width:1200px){ .kpi-grid{ grid-template-columns: repeat(3,1fr);} }
+@media (max-width:700px){ .kpi-grid{ grid-template-columns: repeat(2,1fr);} }
+.kpi-grid-secondary { grid-template-columns: repeat(4, 1fr); margin-bottom:16px; }
+@media (max-width:1200px){ .kpi-grid-secondary{ grid-template-columns: repeat(2,1fr);} }
+.kpi { background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:14px 16px; }
+.kpi-label { font-size:11.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; display:flex; align-items:center; gap:6px; margin-bottom:8px;}
+.kpi-value { font-size:26px; font-weight:700; font-variant-numeric: proportional-nums; }
+.kpi-delta { font-size:11.5px; margin-top:4px; color:var(--text-muted); }
+.kpi.crit .kpi-value { color: var(--critical); }
+.kpi.warn .kpi-value { color: #b97400; }
+[data-theme="dark"] .kpi.warn .kpi-value { color: var(--warning); }
+
+/* Cards / panels */
+.grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:14px; }
+.grid3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:14px; margin-bottom:14px; }
+@media (max-width:1100px){ .grid2, .grid3 { grid-template-columns: 1fr; } }
+.card { background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:16px; }
+.card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.card-title { font-size:13.5px; font-weight:700; display:flex; align-items:center; gap:7px; }
+.card-link { font-size:11.5px; color: var(--brand); cursor:pointer; font-weight:600; }
+
+.card-expand-btn { display:block; text-align:center; margin-top:10px; padding:9px; border-radius:8px; border:1px dashed var(--brand); background:var(--brand-bg); color:var(--brand); font-size:12px; font-weight:700; cursor:pointer; user-select:none; }
+.card-expand-btn:hover { opacity:0.85; }
+.card-expand-btn.is-open { border-style:solid; }
+
+/* Status badge */
+.badge { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; padding:3px 9px; border-radius:5px; white-space:nowrap; }
+.badge .ic { width:6px;height:6px;border-radius:50%; background:currentColor; }
+.badge.good { color: var(--success-text); background: var(--good-bg); }
+.badge.warning { color: #8a5a00; background: var(--warning-bg); }
+[data-theme="dark"] .badge.warning { color: var(--warning); }
+.badge.serious { color: #9c4322; background: var(--serious-bg); }
+[data-theme="dark"] .badge.serious { color: var(--serious); }
+.badge.critical { color: var(--critical); background: var(--critical-bg); }
+
+/* Alert rows */
+.alert-row { display:grid; grid-template-columns: 3px 1.6fr 0.7fr 1.1fr 0.7fr; gap:10px; align-items:center; padding:9px 4px; border-bottom:1px solid var(--grid); font-size:12.5px; }
+.alert-row:last-child { border-bottom:none; }
+.alert-bar { width:3px; height:28px; border-radius:2px; }
+.alert-name { font-weight:600; }
+.alert-sub { color:var(--text-muted); font-size:11px; }
+.col-head { font-size:10.5px; text-transform:uppercase; color:var(--text-muted); letter-spacing:.04em; padding:2px 4px 8px; }
+.rank-num { width:18px; height:18px; border-radius:5px; background:var(--grid); color:var(--text-secondary); font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+
+/* Análise de Backlog — grupos por analista (drill-down) */
+.backlog-analista-group { border-bottom:1px solid var(--grid); }
+.backlog-analista-group:last-child { border-bottom:none; }
+.backlog-analista-row { border-bottom:none; border-radius:8px; }
+.backlog-analista-row:hover { background:var(--surface-2); }
+.backlog-caret { display:inline-block; font-size:10px; color:var(--text-muted); transition:transform .15s ease; }
+.backlog-caret.open { transform:rotate(90deg); }
+.backlog-analista-dops { padding:0 0 8px 22px; }
+.backlog-analista-dops .alert-row { border-bottom:1px solid var(--grid); }
+.backlog-analista-dops .alert-row:last-child { border-bottom:none; }
+.backlog-analista-dops .alert-row:hover { background:var(--surface-2); }
+
+/* Table */
+.table-wrap { overflow-x:auto; }
+table.data { width:100%; border-collapse:collapse; font-size:12.5px; }
+table.data th { text-align:left; font-size:12px; font-weight:600; letter-spacing:0; color:var(--text-secondary); padding:8px 10px; border-bottom:1px solid var(--border); cursor:pointer; white-space:nowrap; user-select:none;}
+table.data th:hover { color: var(--text-primary); }
+table.data td { padding:8px 10px; border-bottom:1px solid var(--grid); white-space:nowrap; font-variant-numeric: tabular-nums; }
+table.data tbody tr:hover { background: rgba(128,128,128,0.06); cursor:pointer; }
+.dop-strong { font-weight:700; }
+.sort-ind { opacity:.5; font-size:9px; }
+table.data tbody tr.row-selected { background: var(--brand-bg); }
+
+/* Line chart (Histórico Pós-Fechamento) */
+#historico-chart { width:100%; height:220px; display:block; }
+
+/* Donut */
+.donut-wrap { display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+.legend { display:flex; flex-direction:column; gap:7px; font-size:12px; }
+.legend-item { display:flex; align-items:center; gap:7px; }
+.legend-swatch { width:10px;height:10px;border-radius:3px; flex-shrink:0; }
+.legend-val { margin-left:auto; color:var(--text-muted); font-variant-numeric: tabular-nums; padding-left:14px;}
+
+/* Bars */
+.hbar-row { display:grid; grid-template-columns: 120px 1fr 50px; align-items:center; gap:10px; margin-bottom:9px; font-size:12px; }
+.hbar-track { height:10px; background:var(--grid); border-radius:5px; overflow:hidden; }
+.hbar-fill { height:100%; border-radius:5px; }
+.hbar-label { color:var(--text-secondary); text-overflow:ellipsis; overflow:hidden; white-space:nowrap; }
+.hbar-val { text-align:right; color:var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* Ranking em barra (Histórico Pós-Fechamento) — mesmo estilo visual do
+   gráfico de barras da planilha "INBOUND APOS FECHAMENTO": nome da
+   agência, barra proporcional ao valor, quantidade e % do total do
+   período lado a lado. */
+.hist-rank-list { display:block; }
+.hist-rank-rows { display:flex; flex-direction:column; gap:2px; }
+/* Estado "Ver todas": scroll PRÓPRIO, limitado a essa área — não é a
+   página inteira que rola, só a listinha dentro do card. */
+.hist-rank-rows-scroll { max-height:520px; overflow-y:auto; padding-right:4px; }
+/* Botão "Ver todas" — antes era um texto discreto que passava batido;
+   agora tem cara de botão mesmo (fundo, borda, pill), pra ficar óbvio que
+   dá pra clicar. */
+.hist-rank-toggle { display:block; width:fit-content; margin:12px auto 2px; padding:8px 18px; border-radius:6px; background:var(--brand-bg); border:1px solid var(--brand); color:var(--brand); font-weight:700; font-size:12.5px; text-align:center; cursor:pointer; transition:background .15s,color .15s; }
+.hist-rank-toggle:hover { background:var(--brand); color:var(--brand-ink); }
+.hist-rank-row { display:grid; grid-template-columns: 22px 176px 1fr 72px 58px; align-items:center; gap:10px; padding:7px 6px; border-radius:8px; cursor:pointer; font-size:12.5px; }
+.hist-rank-row:hover { background: rgba(128,128,128,0.06); }
+.hist-rank-row.row-selected { background: var(--brand-bg); }
+.hist-rank-label { color:var(--text-secondary); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hist-rank-sub { display:block; font-weight:400; font-size:10px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hist-rank-val { text-align:right; color:var(--text-primary); font-weight:700; font-variant-numeric: tabular-nums; white-space:nowrap; }
+.hist-rank-pct { text-align:right; color:var(--brand); font-weight:700; font-variant-numeric: tabular-nums; white-space:nowrap; }
+@media (max-width:640px){
+  .hist-rank-row { grid-template-columns: 18px 1fr 60px; grid-template-areas: "rank label label" "rank track track" "rank val pct"; row-gap:3px; }
+  .hist-rank-row .rank-num { grid-area:rank; }
+  .hist-rank-row .hist-rank-label { grid-area:label; }
+  .hist-rank-row .hbar-track { grid-area:track; }
+  .hist-rank-row .hist-rank-val { grid-area:val; }
+  .hist-rank-row .hist-rank-pct { grid-area:pct; }
 }
-function populateFilters(){
-  populateSelect("f-resp", uniq("resp"));
-  populateSelect("f-subreg", uniq("subreg"));
-  populateSelect("f-cidade", uniq("cidade"));
-  populateSelect("f-estacao", uniq("estacao"));
-  populateSelect("f-statuscoleta", uniq("statusColeta"));
-  populateSelect("f-risco", uniq("risco"));
-  ["resp","subreg","cidade","estacao","statuscoleta","risco"].forEach(k=>{
-    if(!document.getElementById("f-"+k).value) filters[k] = "";
-  });
+
+/* Detail search */
+.search-box { display:flex; gap:8px; margin-bottom:14px; }
+.search-box input { flex:1; padding:10px 14px; border-radius:6px; border:1px solid var(--border); background:var(--surface-2); color:var(--text-primary); font-size:13.5px; outline:none; }
+.detail-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; margin-top:14px; }
+@media (max-width:900px){ .detail-grid { grid-template-columns: 1fr 1fr; } }
+.detail-item { background:var(--page); border:1px solid var(--border); border-radius:7px; padding:11px 13px; }
+.detail-item .l { font-size:10.5px; text-transform:uppercase; color:var(--text-muted); margin-bottom:4px; letter-spacing:.03em;}
+.detail-item .v { font-size:16px; font-weight:700; }
+.detail-header { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.detail-header .dopid { background:var(--page); border:1px solid var(--border); border-radius:6px; padding:8px 14px; font-weight:700; font-size:18px; }
+.detail-header .name { font-size:17px; font-weight:700; }
+.detail-header .sub { font-size:12px; color:var(--text-muted); }
+.empty-state { text-align:center; padding:40px 10px; color:var(--text-muted); font-size:13px; }
+
+.section-title { font-size:18px; font-weight:700; margin: 4px 0 14px; }
+.pill-row { display:flex; gap:8px; flex-wrap:nowrap; overflow-x:auto; margin-bottom:14px; padding-bottom:8px; }
+.pill { border:1px solid var(--border); background:var(--surface-2); border-radius:6px; padding:6px 13px; font-size:12px; cursor:pointer; color:var(--text-secondary); white-space:nowrap; flex:0 0 auto; }
+.pill.active { background:var(--brand); color:#fff; border-color:var(--brand); }
+
+.footer-note { text-align:center; color:var(--text-muted); font-size:11px; margin-top:26px; }
+::-webkit-scrollbar { height:8px; width:8px; }
+::-webkit-scrollbar-thumb { background: var(--baseline); border-radius:6px; }
+
+/* Live data states */
+.loading-overlay {
+  position: fixed; inset: 0; background: rgba(11,11,11,0.45);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
 }
-["resp","subreg","cidade","estacao","statuscoleta","risco"].forEach(k=>{
-  document.getElementById("f-"+k).addEventListener("change", e=>{ filters[k]=e.target.value; renderAll(); });
-});
-function setLiveStatus(ok, message){
-  const dot = document.getElementById("live-dot");
-  const chip = document.getElementById("update-chip");
-  dot.classList.toggle("stale", !ok);
-  chip.lastChild.textContent = " " + message;
+.loading-box {
+  background: var(--surface-2); color: var(--text-primary); padding: 18px 26px;
+  border-radius: 8px; font-size: 13.5px; box-shadow: 0 12px 34px rgba(0,0,0,0.28);
+  display:flex; align-items:center; gap:10px;
 }
-// Busca dados via <iframe> escondido + postMessage, em vez de
-// fetch() ou JSONP. O Web App do Apps Script fica restrito a
-// "Qualquer pessoa dentro da Shopee Mobile" (o Workspace não libera
-// "Anyone" público). Tanto fetch() quanto JSONP (tag <script>)
-// cross-origin acabam bloqueados pelo Chrome (proteção "ORB") quando
-// a resposta passa pelo redirecionamento interno do Google. Um
-// <iframe> é uma navegação de página normal — não sofre esse
-// bloqueio — e a própria página carregada dentro dele (ver
-// WebApp.gs) manda os dados de volta via postMessage.
-function fetchViaIframe(url, timeoutMs){
-  return new Promise((resolve, reject) => {
-    const iframe = document.createElement("iframe");
-    iframe.style.display = "none";
-    let settled = false;
-    let timer;
-    // rid identifica esta chamada específica — evita que duas buscas
-    // concorrentes (ex: dados principais + histórico, disparadas quase
-    // ao mesmo tempo) acabem resolvendo com a resposta uma da outra.
-    const rid = "r" + Date.now() + "_" + Math.random().toString(36).slice(2);
-    function onMessage(ev){
-      if(!ev.data || ev.data.source !== "bi-operacional-shopee") return;
-      if(ev.data.rid !== rid) return;
-      if(settled) return;
-      settled = true;
-      cleanup();
-      if(ev.data.ok) resolve(ev.data.payload);
-      else reject(new Error(ev.data.error || "Erro desconhecido ao buscar dados"));
-    }
-    function cleanup(){
-      window.removeEventListener("message", onMessage);
-      if(iframe.parentNode) iframe.parentNode.removeChild(iframe);
-      clearTimeout(timer);
-    }
-    window.addEventListener("message", onMessage);
-    timer = setTimeout(() => {
-      if(settled) return;
-      settled = true;
-      cleanup();
-      reject(new Error("Tempo esgotado ao buscar dados. Confira se você está logada com sua conta @shopee.com."));
-    }, timeoutMs || 20000);
-    iframe.onerror = () => {
-      if(settled) return;
-      settled = true;
-      cleanup();
-      reject(new Error("Falha ao carregar o iframe de dados"));
-    };
-    const sep = url.indexOf("?") >= 0 ? "&" : "?";
-    iframe.src = url + sep + "embed=1&rid=" + rid + "&_=" + Date.now();
-    document.body.appendChild(iframe);
-  });
+.spinner {
+  width:16px; height:16px; border-radius:50%; border:2px solid var(--grid);
+  border-top-color: var(--brand); animation: spin 0.8s linear infinite;
 }
-async function loadData(showOverlay){
-  const overlay = document.getElementById("loading-overlay");
-  const banner = document.getElementById("error-banner");
-  if(showOverlay) overlay.style.display = "flex";
-  try {
-    if(API_URL.indexOf("COLOQUE_AQUI") !== -1){
-      throw new Error("API_URL ainda não configurada em script.js");
-    }
-    const json = await fetchViaIframe(API_URL, 20000);
-    const rows = Array.isArray(json) ? json : (json.rows || []);
-    DATA = normalizeRows(rows);
-    banner.style.display = "none";
-    populateFilters();
-    renderAll();
-    const stamp = json.updatedAt ? fmtDate(json.updatedAt) : new Date().toLocaleTimeString("pt-BR");
-    setLiveStatus(true, "Sincronizado às " + stamp);
-  } catch(err){
-    console.error(err);
-    banner.style.display = "block";
-    banner.textContent = "⚠ Não foi possível atualizar os dados agora (" + err.message + "). " + (DATA.length ? "Mostrando a última versão carregada." : "Confira a API_URL em script.js.");
-    setLiveStatus(false, "Falha na sincronização");
-    if(DATA.length){ populateFilters(); renderAll(); }
-  } finally {
-    overlay.style.display = "none";
-  }
+@keyframes spin { to { transform: rotate(360deg); } }
+.error-banner {
+  display:none; background: var(--critical-bg); color: var(--critical); border:1px solid var(--critical);
+  padding:10px 16px; border-radius:6px; margin-bottom:14px; font-size:12.5px;
 }
-document.getElementById("refresh-btn").addEventListener("click", ()=> loadData(true));
-// ==================== HISTÓRICO — INBOUND PÓS-FECHAMENTO ====================
-// Carregado sob demanda (só quando a aba "Histórico Pós-Fechamento" é aberta
-// pela primeira vez), pra não pesar a busca automática de 5 em 5 minutos.
-let HIST_DATA = [];
-let HIST_LOADED = false;
-let HIST_SELECTED_DOP = null;
-let HIST_MODE = "dia"; // "dia" | "semana"
-let HIST_SELECTED_PERIOD = null; // chave do dia (YYYY-MM-DD) ou da semana, conforme HIST_MODE
-let HIST_SHOW_ALL = false; // false = só Top 10, true = lista completa (toggle "Ver todas")
-let HIST_RANKING_COMPLETO = []; // último ranking calculado (sem corte de Top 10) — usado pela busca por DOP
-let HIST_DOP_FILTRO = null; // quando setado (busca por DOP confirmada), a lista mostra só esse DOP
-async function loadHistorico(){
-  const tableEl = document.getElementById("table-historico");
-  if(tableEl) tableEl.innerHTML = '<div class="empty-state">Carregando histórico… (pode levar até um minuto, a base é grande)</div>';
-  try{
-    const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
-    // Timeout bem maior que o dos dados principais: a aba "Dados por Dia" tem
-    // quase 100 mil linhas — confirmado no log do Apps Script que a busca
-    // pode levar uns 56s. Damos bastante folga acima disso.
-    const json = await fetchViaIframe(API_URL + sep + "tipo=historico", 90000);
-    HIST_DATA = Array.isArray(json) ? json : (json.historico || []);
-    HIST_LOADED = true;
-    HIST_SELECTED_PERIOD = null;
-    populateHistoricoPeriodos();
-    renderHistoricoRanking();
-  } catch(err){
-    console.error(err);
-    if(tableEl) tableEl.innerHTML = '<div class="empty-state">Não foi possível carregar o histórico agora (' + err.message + ').</div>';
-  }
-}
-// Só considera, no histórico, os DOPs que estão dentro do escopo ATUAL —
-// ou seja, já passando pelos filtros do topo (Responsável, Estação,
-// Sub-Regional...). Antes usava DATA (a base inteira, sem filtro nenhum),
-// por isso escolher uma Estação lá em cima não mudava nada aqui. A aba
-// "Dados por Dia" também tem registros de fora da sua carteira, que esse
-// mesmo filtro já deixa de fora.
-function historicoFiltradoPorEscopo(){
-  const escopoAtual = filtered();
-  return HIST_DATA.filter(h => escopoAtual.some(d=>String(d.dop)===String(h.dop)));
-}
-// Agrupa o histórico (já filtrado pro escopo) por DOP, cada série
-// ordenada por data crescente — pronta pra virar linha do gráfico.
-function historicoPorDop(){
-  const porDop = {};
-  historicoFiltradoPorEscopo().forEach(h=>{
-    if(!porDop[h.dop]) porDop[h.dop] = [];
-    porDop[h.dop].push(h);
-  });
-  Object.values(porDop).forEach(arr=> arr.sort((a,b)=> new Date(a.data)-new Date(b.data)));
-  return porDop;
-}
-// FIX (01/09/2026): esta função é usada tanto para rotular DIAS
-// (recebe uma string "YYYY-MM-DD", sem horário) quanto para rotular
-// pontos do gráfico de evolução (recebe um ISO completo, com horário).
-// Sem "timeZone: 'UTC'", o toLocaleDateString exibia a data no fuso
-// do NAVEGADOR de quem está vendo o painel. Para uma string
-// "YYYY-MM-DD" (interpretada pelo JS como meia-noite UTC), isso fazia
-// o rótulo "voltar" um dia inteiro em qualquer fuso negativo — como o
-// horário de Brasília (UTC-3) — porque meia-noite UTC já é a noite
-// anterior aqui. Resultado: o seletor "DIA" mostrava, por exemplo,
-// "30/08" no texto para uma opção cujo valor real era "2026-08-31",
-// fazendo o painel exibir os números de segunda-feira como se fossem
-// de domingo. Forçar timeZone: "UTC" faz o rótulo sempre bater com a
-// mesma data (UTC) usada para montar a chave em dateKey(), então o
-// texto exibido nunca mais desalinha do valor selecionado — e não
-// muda em nada os rótulos que já vinham de um ISO com horário (como
-// os do gráfico de evolução), que já caíam no dia certo.
-function fmtDateShort(iso){
-  const d = new Date(iso);
-  if(isNaN(d)) return iso;
-  return d.toLocaleDateString("pt-BR", {day:"2-digit", month:"2-digit", timeZone:"UTC"});
-}
-function dateKey(iso){
-  const d = new Date(iso);
-  if(isNaN(d)) return iso;
-  return d.toISOString().slice(0,10);
-}
-// Preenche o seletor de período (dias ou semanas disponíveis no histórico
-// carregado), mantendo a seleção atual se ela ainda existir na lista.
-function populateHistoricoPeriodos(){
-  const escopo = historicoFiltradoPorEscopo();
-  const sel = document.getElementById("historico-period-select");
-  const label = document.getElementById("historico-period-label");
-  if(!sel) return;
-  if(HIST_MODE === "dia"){
-    if(label) label.textContent = "Dia";
-    const dias = [...new Set(escopo.map(h=>dateKey(h.data)))].sort().reverse();
-    sel.innerHTML = dias.map(k=>`<option value="${k}">${fmtDateShort(k)}</option>`).join("");
-    if(!dias.includes(HIST_SELECTED_PERIOD)) HIST_SELECTED_PERIOD = dias[0] || null;
-  } else {
-    if(label) label.textContent = "Semana";
-    const semanas = [...new Set(escopo.map(h=>h.semana).filter(Boolean))].sort().reverse();
-    sel.innerHTML = semanas.map(s=>`<option value="${s}">Semana ${s}</option>`).join("");
-    if(!semanas.includes(HIST_SELECTED_PERIOD)) HIST_SELECTED_PERIOD = semanas[0] || null;
-  }
-  sel.value = HIST_SELECTED_PERIOD || "";
-}
-document.querySelectorAll("#historico-mode-pills .pill").forEach(p=>{
-  p.addEventListener("click", ()=>{
-    if(p.dataset.mode === HIST_MODE) return;
-    document.querySelectorAll("#historico-mode-pills .pill").forEach(x=>x.classList.remove("active"));
-    p.classList.add("active");
-    HIST_MODE = p.dataset.mode;
-    HIST_SELECTED_PERIOD = null;
-    if(HIST_LOADED){ populateHistoricoPeriodos(); renderHistoricoRanking(); }
-  });
-});
-const histPeriodSelect = document.getElementById("historico-period-select");
-if(histPeriodSelect) histPeriodSelect.addEventListener("change", e=>{
-  HIST_SELECTED_PERIOD = e.target.value;
-  renderHistoricoRanking();
-});
-// Ranking Top 10 do período selecionado (um dia específico, ou a soma da
-// semana selecionada). "% Impacto" = fatia dessa agência dentro do total
-// de pós-fechamento de TODAS as agências no período (não o total da
-// própria agência) — mesma lógica da planilha "INBOUND APOS FECHAMENTO"
-// que serviu de referência pro visual deste ranking.
-function renderHistoricoRanking(){
-  const escopo = historicoFiltradoPorEscopo();
-  const linhasPeriodo = HIST_MODE === "dia"
-    ? escopo.filter(h => dateKey(h.data) === HIST_SELECTED_PERIOD)
-    : escopo.filter(h => h.semana === HIST_SELECTED_PERIOD);
-  const porDopPeriodo = {};
-  linhasPeriodo.forEach(h=>{
-    if(!porDopPeriodo[h.dop]) porDopPeriodo[h.dop] = 0;
-    porDopPeriodo[h.dop] += num(h.valor);
-  });
-  // Total do período = soma de TODAS as agências (não só o Top 10), pra
-  // o % de cada agência refletir o peso real dela no total do período.
-  const totalPeriodo = Object.values(porDopPeriodo).reduce((a,b)=>a+b, 0);
-  // Só entra no ranking quem realmente recebeu pacote depois do fechamento
-  // nesse período (valor > 0) — agência zerada não é "ranking", é ruído
-  // (e inflava a lista "Ver todas" com dezenas de linhas sem barra nenhuma).
-  const rankingCompleto = Object.keys(porDopPeriodo).map(dop=>{
-    const info = DATA.find(d=>String(d.dop)===String(dop));
-    const valor = porDopPeriodo[dop];
-    return {
-      dop,
-      agencia: info ? info.agencia : "—",
-      resp: info ? info.resp : "—",
-      valor,
-      pct: totalPeriodo > 0 ? (valor/totalPeriodo) : 0
-    };
-  }).filter(l=>l.valor > 0).sort((a,b)=>b.valor-a.valor);
-  HIST_RANKING_COMPLETO = rankingCompleto;
-  const el = document.getElementById("table-historico");
-  if(!el) return;
-  // Busca por DOP confirmada (HIST_DOP_FILTRO setado em buscarHistoricoDop):
-  // mostra SÓ essa agência, em vez da lista inteira — com um link pra
-  // voltar ao ranking completo.
-  if(HIST_DOP_FILTRO){
-    const posicao = rankingCompleto.findIndex(l=>String(l.dop)===String(HIST_DOP_FILTRO));
-    const voltar = '<div class="hist-rank-toggle" data-action="clear-dop-filter">← Ver ranking completo</div>';
-    if(posicao < 0){
-      el.innerHTML = '<div class="empty-state">DOP ' + HIST_DOP_FILTRO + ' não recebeu pacotes pós-fechamento nesse período/filtro.</div>' + voltar;
-      const clearEl1 = el.querySelector('[data-action="clear-dop-filter"]');
-      if(clearEl1) clearEl1.addEventListener("click", limparBuscaHistoricoDop);
-      return;
-    }
-    const l = rankingCompleto[posicao];
-    const maxValorFiltro = Math.max(...rankingCompleto.map(x=>x.valor), 1);
-    const linha = `
-      <div class="hist-rank-row row-selected" data-dop="${l.dop}">
-        <div class="rank-num">${posicao+1}</div>
-        <div class="hist-rank-label">${l.agencia}<span class="hist-rank-sub">DOP ${l.dop} · ${l.resp}</span></div>
-        <div class="hbar-track"><div class="hbar-fill" style="width:${(l.valor/maxValorFiltro*100).toFixed(1)}%;background:var(--brand)"></div></div>
-        <div class="hist-rank-val">${l.valor.toLocaleString("pt-BR")}</div>
-        <div class="hist-rank-pct">${pct0(l.pct)}</div>
-      </div>`;
-    el.innerHTML = '<div class="hist-rank-rows">' + linha + '</div>' + voltar;
-    const clearEl = el.querySelector('[data-action="clear-dop-filter"]');
-    if(clearEl) clearEl.addEventListener("click", limparBuscaHistoricoDop);
-    selecionarHistoricoDop(l.dop);
-    return;
-  }
-  // Por padrão só o Top 10 (pra não repetir aquele scroll gigante da
-  // página inteira); "Ver todas" alterna pra lista completa, com um
-  // scroll PRÓPRIO e limitado, só dentro do card — não força a página
-  // toda a rolar de novo.
-  const ranking = HIST_SHOW_ALL ? rankingCompleto : rankingCompleto.slice(0,10);
-  if(!rankingCompleto.length){
-    el.innerHTML = '<div class="empty-state">Sem dados de histórico para o período selecionado.</div>';
-    return;
-  }
-  // Escala das barras sempre pelo maior valor do período inteiro (não só
-  // do que está visível), pra não "pular" de tamanho ao expandir/recolher.
-  const maxValor = Math.max(...rankingCompleto.map(l=>l.valor), 1);
-  // IMPORTANTE: nada de onclick="...(${JSON.stringify(l.dop)})" aqui — como
-  // o DOP vem como string, JSON.stringify devolve algo como "7990" (com
-  // aspas duplas dentro), e isso quebra o atributo onclick="..." que já usa
-  // aspas duplas por fora (o HTML fecha o atributo na primeira aspas que
-  // encontra). O clique funcionava só na 1ª linha (chamada direto via JS,
-  // não pelo onclick) e falhava silenciosamente em todas as outras. Por
-  // isso agora usamos só data-dop + addEventListener, sem montar JS dentro
-  // do HTML.
-  const linhas = ranking.map((l,i)=>`
-    <div class="hist-rank-row${String(l.dop)===String(HIST_SELECTED_DOP)?' row-selected':''}" data-dop="${l.dop}" title="Clique para ver a evolução de ${l.agencia}">
-      <div class="rank-num">${i+1}</div>
-      <div class="hist-rank-label">${l.agencia}<span class="hist-rank-sub">DOP ${l.dop} · ${l.resp}</span></div>
-      <div class="hbar-track"><div class="hbar-fill" style="width:${(l.valor/maxValor*100).toFixed(1)}%;background:var(--brand)"></div></div>
-      <div class="hist-rank-val">${l.valor.toLocaleString("pt-BR")}</div>
-      <div class="hist-rank-pct">${pct0(l.pct)}</div>
-    </div>`).join("");
-  const toggle = rankingCompleto.length > 10
-    ? `<div class="hist-rank-toggle" data-action="toggle-show-all">${HIST_SHOW_ALL ? "Ver só Top 10" : `Ver todas as ${rankingCompleto.length} agências`}</div>`
-    : "";
-  el.innerHTML = `<div class="hist-rank-rows${HIST_SHOW_ALL ? " hist-rank-rows-scroll" : ""}">${linhas}</div>${toggle}`;
-  el.querySelectorAll(".hist-rank-row").forEach(row=>{
-    row.addEventListener("click", ()=> selecionarHistoricoDop(row.dataset.dop));
-  });
-  const toggleEl = el.querySelector('[data-action="toggle-show-all"]');
-  if(toggleEl) toggleEl.addEventListener("click", toggleHistoricoShowAll);
-  const aindaExiste = ranking.some(l=>String(l.dop)===String(HIST_SELECTED_DOP));
-  selecionarHistoricoDop(aindaExiste ? HIST_SELECTED_DOP : ranking[0].dop);
-}
-function toggleHistoricoShowAll(){
-  HIST_SHOW_ALL = !HIST_SHOW_ALL;
-  renderHistoricoRanking();
-}
-// Busca rápida por número de DOP no ranking (útil com centenas de
-// agências, sem precisar clicar em "Ver todas" e catar na mão). Aceita o
-// número exato ou o começo dele; se achar, a lista passa a mostrar SÓ essa
-// agência (HIST_DOP_FILTRO), com um link "Ver ranking completo" pra voltar.
-function buscarHistoricoDop(){
-  const input = document.getElementById("historico-dop-input");
-  const msgEl = document.getElementById("historico-dop-search-msg");
-  if(!input || !msgEl) return;
-  const termo = input.value.trim();
-  if(!termo){ msgEl.style.display = "none"; HIST_DOP_FILTRO = null; renderHistoricoRanking(); return; }
-  const encontrado = HIST_RANKING_COMPLETO.find(l=>String(l.dop)===termo)
-    || HIST_RANKING_COMPLETO.find(l=>String(l.dop).startsWith(termo));
-  if(!encontrado){
-    msgEl.style.display = "block";
-    msgEl.textContent = 'Nenhuma agência com DOP "' + termo + '" no período/filtro atual.';
-    HIST_DOP_FILTRO = null;
-    renderHistoricoRanking();
-    return;
-  }
-  msgEl.style.display = "none";
-  HIST_SELECTED_DOP = encontrado.dop;
-  HIST_DOP_FILTRO = encontrado.dop;
-  renderHistoricoRanking();
-}
-// Limpa a busca por DOP e volta a mostrar o ranking inteiro (Top 10 / Ver
-// todas) — acionado pelo link "← Ver ranking completo".
-function limparBuscaHistoricoDop(){
-  const input = document.getElementById("historico-dop-input");
-  const msgEl = document.getElementById("historico-dop-search-msg");
-  if(input) input.value = "";
-  if(msgEl) msgEl.style.display = "none";
-  HIST_DOP_FILTRO = null;
-  renderHistoricoRanking();
-}
-const histDopInput = document.getElementById("historico-dop-input");
-if(histDopInput){
-  histDopInput.addEventListener("keydown", e=>{
-    if(e.key === "Enter"){ e.preventDefault(); buscarHistoricoDop(); }
-  });
-  histDopInput.addEventListener("input", ()=>{
-    if(!histDopInput.value.trim()){
-      const msgEl = document.getElementById("historico-dop-search-msg");
-      if(msgEl) msgEl.style.display = "none";
-      if(HIST_DOP_FILTRO){ HIST_DOP_FILTRO = null; renderHistoricoRanking(); }
-    }
-  });
-}
-function selecionarHistoricoDop(dop){
-  HIST_SELECTED_DOP = dop;
-  const porDop = historicoPorDop();
-  const serie = porDop[dop] || [];
-  const info = DATA.find(d=>String(d.dop)===String(dop));
-  document.querySelectorAll("#table-historico .hist-rank-row").forEach(row=> row.classList.remove("row-selected"));
-  const rowEl = [...document.querySelectorAll("#table-historico .hist-rank-row")].find(row=>row.dataset.dop===String(dop));
-  if(rowEl) rowEl.classList.add("row-selected");
-  const card = document.getElementById("historico-chart-card");
-  const title = document.getElementById("historico-chart-title");
-  if(card) card.style.display = "block";
-  if(title) title.textContent = "Evolução diária (últimos 3 meses) — " + (info ? info.agencia : ("DOP " + dop)) + " (DOP " + dop + ")";
-  drawLineChart("historico-chart", serie.map(h=>({label: fmtDateShort(h.data), value: num(h.valor)})));
-}
-// Gráfico de linha simples em SVG puro (sem lib externa), no mesmo estilo
-// visual do resto do painel — usa as mesmas variáveis de tema (funciona em
-// modo claro e escuro).
-function drawLineChart(svgId, points){
-  const svg = document.getElementById(svgId);
-  if(!svg) return;
-  const W = 900, H = 220, padL = 46, padR = 16, padT = 16, padB = 30;
-  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
-  if(!points.length){
-    svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--text-muted)" font-size="12">Sem dados no período.</text>`;
-    return;
-  }
-  const values = points.map(p=>p.value);
-  const maxV = Math.max(...values, 1);
-  const innerW = W - padL - padR, innerH = H - padT - padB;
-  const stepX = points.length>1 ? innerW/(points.length-1) : 0;
-  const xAt = i => padL + stepX*i;
-  const yAt = v => padT + innerH - (v/maxV)*innerH;
-  let grid = "";
-  const steps = 4;
-  for(let s=0; s<=steps; s++){
-    const v = maxV * s/steps;
-    const y = yAt(v);
-    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="var(--grid)" stroke-width="1"/>`;
-    grid += `<text x="${padL-8}" y="${y+3}" text-anchor="end" font-size="10" fill="var(--text-muted)">${Math.round(v).toLocaleString("pt-BR")}</text>`;
-  }
-  let path = "", area = `M ${xAt(0)} ${yAt(0)} `;
-  points.forEach((p,i)=>{
-    const x = xAt(i), y = yAt(p.value);
-    path += (i===0?"M ":"L ") + x + " " + y + " ";
-    area += "L " + x + " " + y + " ";
-  });
-  area += `L ${xAt(points.length-1)} ${yAt(0)} Z`;
-  let dots = "", labels = "";
-  const labelEvery = Math.max(1, Math.ceil(points.length/8));
-  points.forEach((p,i)=>{
-    const x = xAt(i), y = yAt(p.value);
-    dots += `<circle cx="${x}" cy="${y}" r="3" fill="var(--brand)"/>`;
-    if(i===0 || i===points.length-1 || i%labelEvery===0){
-      labels += `<text x="${x}" y="${H-8}" text-anchor="middle" font-size="10" fill="var(--text-muted)">${p.label}</text>`;
-    }
-  });
-  svg.innerHTML = grid +
-    `<path d="${area}" fill="var(--brand)" opacity="0.10"/>` +
-    `<path d="${path}" fill="none" stroke="var(--brand)" stroke-width="2"/>` +
-    dots + labels;
-}
-const histRefreshBtn = document.getElementById("historico-refresh");
-if(histRefreshBtn) histRefreshBtn.addEventListener("click", ()=> loadHistorico());
-// ==================== ANÁLISE DE BACKLOG (pacotes arrastados) ====================
-// Carregado sob demanda (só quando a aba "Análise de Backlog" é aberta pela
-// primeira vez) — mesmo padrão do Histórico. Mostra, por DOP, quantos
-// pacotes estão parados em cada dia de aging (D1 até D15), vindo direto da
-// aba "Forward" da planilha "Gestão da Rotina | PUDO - ELIVAN" via
-// WebApp.gs (?tipo=backlog). D0 ("hoje") não entra — só é considerado
-// "arrastado" quem já passou de um dia. O analista (RESPONSÁVEL) de cada
-// DOP vem direto dessa planilha (coluna "responsavel") — de propósito NÃO
-// cruza com a base principal (BASE_TRATADA) nem com os filtros do topo,
-// então essa aba é independente do resto do painel. Por enquanto só cobre
-// a frente Forward; RR e BSC (que aparecem na mesma planilha, aba
-// Tabela_Forward_RR_BSC) ficam de fora até a usuária ter acesso às
-// planilhas de origem delas.
-let BACKLOG_DATA = [];
-let BACKLOG_LOADED = false;
-// Nomes de analistas (RESPONSÁVEL) com o grupo expandido — persiste entre
-// re-renders (filtro digitado, refresh dos dados do topo, botão Atualizar)
-// pra não fechar o que a usuária já abriu.
-let BACKLOG_EXPANDED = new Set();
-// Dentro de um grupo já aberto, a lista de DOPs também começa "em prévia"
-// (só os primeiros) — nomes de analistas aqui = lista completa mostrada.
-let BACKLOG_DOPS_EXPANDED = new Set();
-const BACKLOG_DOP_PREVIEW = 6;
-// Filtros próprios dessa seção (Regional/Sub-Regional/Analista) —
-// independentes dos filtros do topo do painel, porque essa aba usa a
-// planilha Forward direto.
-let backlogFilters = { regional:"", subregional:"", analista:"" };
-function backlogUniq(rows, field){ return [...new Set(rows.map(d=>d[field]).filter(Boolean))].sort(); }
-// Mesma lógica em cascata do filtro de Notas Fiscais: cada select só mostra
-// as opções que ainda fazem sentido dado o que já foi escolhido nos outros.
-function backlogFilteredExcept(exceptKey){
-  return BACKLOG_DATA.filter(d =>
-    (exceptKey==="regional" || !backlogFilters.regional || d.regional===backlogFilters.regional) &&
-    (exceptKey==="subregional" || !backlogFilters.subregional || d.subRegional===backlogFilters.subregional) &&
-    (exceptKey==="analista" || !backlogFilters.analista || d.resp===backlogFilters.analista)
-  );
-}
-function populateBacklogFilters(){
-  populateSelect("backlog-f-regional", backlogUniq(backlogFilteredExcept("regional"),"regional"));
-  populateSelect("backlog-f-subregional", backlogUniq(backlogFilteredExcept("subregional"),"subRegional"));
-  populateSelect("backlog-f-analista", backlogUniq(backlogFilteredExcept("analista"),"resp"));
-}
-["regional","subregional","analista"].forEach(k=>{
-  const elSel = document.getElementById("backlog-f-"+k);
-  if(elSel) elSel.addEventListener("change", e=>{
-    backlogFilters[k]=e.target.value;
-    populateBacklogFilters();
-    renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
-  });
-});
-async function loadBacklogAnalise(){
-  const el = document.getElementById("backlog-list");
-  // Igual o Histórico: a aba "Forward" (Backlog OPS) pode ser grande, então
-  // avisamos que pode demorar e damos um timeout bem mais folgado que os
-  // 30s anteriores (estavam estourando o "Tempo esgotado ao buscar dados").
-  if(el) el.innerHTML = '<div class="empty-state">Carregando análise de backlog… (pode levar até um minuto)</div>';
-  try{
-    const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
-    const json = await fetchViaIframe(API_URL + sep + "tipo=backlog", 75000);
-    BACKLOG_DATA = Array.isArray(json) ? json : (json.backlog || []);
-    BACKLOG_LOADED = true;
-    populateBacklogFilters();
-    renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
-  } catch(err){
-    console.error(err);
-    if(el) el.innerHTML = '<div class="empty-state">Não foi possível carregar a análise de backlog agora (' + err.message + ').</div>';
-  }
-}
-// "D_1" -> "D1" (só pra exibição)
-function diaLabel(chave){
-  return chave.replace("D_", "D");
-}
-// A partir de D3 é considerado crítico (combinado com a usuária) — D1/D2
-// ainda não. Soma tudo que for D3 pra cima, de um DOP.
-function backlogD3Mais(b){
-  return Object.entries(b.dias||{}).reduce((s,[k,qtd]) => (+k.replace("D_","")) >= 3 ? s + qtd : s, 0);
-}
-// Em vez de um selo por dia (D1, D2, D3... até D15 — poluído demais), agrupa
-// em faixas de severidade: D1-D2 (ainda não crítico, cinza/discreto),
-// D3-D5 (atenção), D6-D10 (sério), D11+ (crítico). Cada DOP mostra no máximo
-// 4 selos em vez de até 15.
-function backlogDiasChips(b){
-  const dias = b.dias || {};
-  const faixa = (lo,hi) => Object.entries(dias).reduce((s,[k,qtd])=>{
-    const n = +k.replace("D_","");
-    return (n>=lo && n<=hi) ? s+qtd : s;
-  },0);
-  const faixas = [
-    { lo:1, hi:2, cls:"good", label:"D1-D2", mute:true },
-    { lo:3, hi:5, cls:"warning", label:"D3-D5" },
-    { lo:6, hi:10, cls:"serious", label:"D6-D10" },
-    { lo:11, hi:999, cls:"critical", label:"D11+" }
-  ];
-  return faixas.map(f=>{
-    const qtd = faixa(f.lo, f.hi);
-    if(qtd<=0) return "";
-    const estilo = f.mute ? ' style="margin:2px 4px 2px 0; opacity:.7;"' : ' style="margin:2px 4px 2px 0;"';
-    return `<span class="badge ${f.cls}"${estilo}><span class="ic"></span>${f.label} · ${qtd.toLocaleString("pt-BR")}</span>`;
-  }).join("");
-}
-// Agrupado por analista (RESPONSÁVEL): cada linha do topo é um analista com
-// o total de DOPs/pacotes parados sob ele; clicar expande a lista dos DOPs
-// (agência + dias de aging), igual mostrava antes, só que aninhado.
-function renderBacklogAnalise(filtro){
-  const el = document.getElementById("backlog-list");
-  const badge = document.getElementById("nav-backlog-badge");
-  if(!el) return;
-  if(!BACKLOG_LOADED){
-    el.innerHTML = '<div class="empty-state">Abra esta aba para carregar a análise de backlog.</div>';
-    return;
-  }
-  const termo = (filtro||"").trim().toLowerCase();
-  // Independente dos filtros do topo (Responsável, Estação, Cidade...) —
-  // essa aba usa a planilha Forward direto, sem cruzar com a base principal
-  // do painel (ver comentário acima). Regional/Sub-Regional têm filtro
-  // próprio (backlogFilters), só dessa seção.
-  const linhas = BACKLOG_DATA.filter(b =>
-    (!backlogFilters.regional || b.regional===backlogFilters.regional) &&
-    (!backlogFilters.subregional || b.subRegional===backlogFilters.subregional) &&
-    (!backlogFilters.analista || b.resp===backlogFilters.analista)
-  ).map(b => ({ ...b, d3Mais: backlogD3Mais(b) }));
-  if(badge) badge.textContent = linhas.length;
-  if(!linhas.length){
-    el.innerHTML = '<div class="empty-state">Nenhum DOP com pacotes parados (D1+) para os filtros atuais.</div>';
-    return;
-  }
-  const grupos = new Map();
-  linhas.forEach(b=>{
-    const resp = b.resp || "Não informado";
-    if(!grupos.has(resp)) grupos.set(resp, []);
-    grupos.get(resp).push(b);
-  });
-  function montaGrupo(resp, rows){
-    // DOPs mais graves (mais pacotes em D3+) primeiro — é o que importa
-    // olhar primeiro dentro do analista.
-    const rowsOrdenadas = [...rows].sort((a,b)=> (b.d3Mais - a.d3Mais) || (b.totalArrastado - a.totalArrastado));
-    return {
-      resp, rows: rowsOrdenadas, totalDops: rows.length,
-      totalArrastado: rows.reduce((s,b)=>s+b.totalArrastado,0),
-      totalD3Mais: rows.reduce((s,b)=>s+b.d3Mais,0)
-    };
-  }
-  let listaGrupos = [...grupos.entries()].map(([resp, rows])=> montaGrupo(resp, rows));
-  if(termo){
-    listaGrupos = listaGrupos
-      .map(g=>{
-        const matchResp = g.resp.toLowerCase().includes(termo);
-        const rows = matchResp ? g.rows : g.rows.filter(b =>
-          String(b.dop).toLowerCase().includes(termo) || (b.agencia||"").toLowerCase().includes(termo));
-        return rows.length ? montaGrupo(g.resp, rows) : null;
-      })
-      .filter(Boolean);
-  }
-  // Prioriza quem tem mais pacotes em D3+ (o que é crítico agora); total
-  // geral só desempata.
-  listaGrupos.sort((a,b)=> (b.totalD3Mais - a.totalD3Mais) || (b.totalArrastado - a.totalArrastado));
-  if(!listaGrupos.length){
-    el.innerHTML = '<div class="empty-state">Nenhum resultado para essa busca.</div>';
-    return;
-  }
-  // Com busca ativa, os grupos com resultado abrem sozinhos e mostram a
-  // lista de DOPs inteira (pra não esconder o que foi encontrado); sem
-  // busca, respeita o que a usuária já tinha aberto/fechado manualmente.
-  el.innerHTML = listaGrupos.map(g=>{
-    const aberto = termo ? true : BACKLOG_EXPANDED.has(g.resp);
-    const dopsAbertos = termo ? true : BACKLOG_DOPS_EXPANDED.has(g.resp);
-    const dopsVisiveis = dopsAbertos ? g.rows : g.rows.slice(0, BACKLOG_DOP_PREVIEW);
-    const temMais = g.rows.length > BACKLOG_DOP_PREVIEW;
-    const dopsRowsHtml = !aberto ? "" : dopsVisiveis.map(b => {
-      const local = [b.cidade, b.estacao].filter(Boolean).join(" · ");
-      return `
-      <div class="alert-row backlog-dop-row" data-dop="${b.dop}" style="grid-template-columns:1.4fr 0.9fr; cursor:pointer; align-items:flex-start;" title="Clique para ver o detalhe de ${b.agencia}">
-        <div><div class="alert-name">${b.agencia}</div><div class="alert-sub">DOP ${b.dop}${local ? " · " + local : ""} · ${b.totalArrastado.toLocaleString("pt-BR")} pacote${b.totalArrastado>1?'s':''} parado${b.totalArrastado>1?'s':''}</div></div>
-        <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">${backlogDiasChips(b)}</div>
-      </div>`;
-    }).join("");
-    const toggleDopsHtml = (!aberto || !temMais) ? "" : `
-      <div class="backlog-dops-toggle" data-analista="${g.resp}" style="cursor:pointer; color:var(--brand); font-weight:600; font-size:12px; padding:8px 4px 2px;">
-        ${dopsAbertos ? "− Mostrar menos" : `+ Ver todos os ${g.rows.length} DOPs`}
-      </div>`;
-    return `
-      <div class="backlog-analista-group">
-        <div class="alert-row backlog-analista-row" data-analista="${g.resp}" style="grid-template-columns:16px 1fr auto; cursor:pointer;">
-          <span class="backlog-caret ${aberto?'open':''}">▸</span>
-          <div><div class="alert-name">${g.resp}</div><div class="alert-sub">${g.totalDops} DOP${g.totalDops>1?'s':''} · ${g.totalArrastado.toLocaleString("pt-BR")} parado${g.totalArrastado>1?'s':''} no total</div></div>
-          <span class="badge ${g.totalD3Mais>0 ? 'critical' : 'good'}"><span class="ic"></span>${g.totalD3Mais>0 ? g.totalD3Mais.toLocaleString("pt-BR") + " em D3+" : "sem D3+"}</span>
-        </div>
-        <div class="backlog-analista-dops"${aberto?"":' style="display:none"'}>${dopsRowsHtml}${toggleDopsHtml}</div>
-      </div>`;
-  }).join("");
-  el.querySelectorAll(".backlog-analista-row[data-analista]").forEach(row=>{
-    row.addEventListener("click", ()=>{
-      const resp = row.dataset.analista;
-      if(BACKLOG_EXPANDED.has(resp)) BACKLOG_EXPANDED.delete(resp); else BACKLOG_EXPANDED.add(resp);
-      renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
-    });
-  });
-  el.querySelectorAll(".backlog-dops-toggle[data-analista]").forEach(row=>{
-    row.addEventListener("click", ev=>{
-      ev.stopPropagation();
-      const resp = row.dataset.analista;
-      if(BACKLOG_DOPS_EXPANDED.has(resp)) BACKLOG_DOPS_EXPANDED.delete(resp); else BACKLOG_DOPS_EXPANDED.add(resp);
-      renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
-    });
-  });
-  el.querySelectorAll(".backlog-dop-row[data-dop]").forEach(row=>{
-    row.addEventListener("click", ev=>{ ev.stopPropagation(); openDetail(row.dataset.dop); });
-  });
-}
-const backlogSearchInput = document.getElementById("backlog-search");
-if(backlogSearchInput){
-  backlogSearchInput.addEventListener("input", e=> renderBacklogAnalise(e.target.value));
-}
-const backlogRefreshBtn = document.getElementById("backlog-refresh");
-if(backlogRefreshBtn) backlogRefreshBtn.addEventListener("click", ()=> loadBacklogAnalise());
-// ==================== NOTAS FISCAIS PENDENTES ====================
-// Mesmo padrão sob demanda do Histórico/Backlog: só busca (?tipo=pagamentos)
-// quando a aba é aberta pela 1ª vez. Filtros (mês/regional/sub-regional/
-// analista) e agregação por grupo são feitos aqui no navegador, direto em
-// cima da lista de DOPs pendentes que vem do Apps Script (que já varre
-// Julho, Agosto etc. e já deriva a regional — ver pagColetarPendentes em
-// Pagamentos.gs).
-let NF_DATA = [];
-let NF_LOADED = false;
-let nfFilters = { mes:"", regional:"", subregional:"", analista:"" };
-const NF_MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-// "2026-08-01T03:00:00.000Z" -> "Agosto/2026". Usa UTC (não o fuso do
-// navegador) pra não "voltar" um mês perto da virada, mesma lógica do
-// fmtDateShort do Histórico. Se não for uma data reconhecível, devolve o
-// valor original sem mexer.
-function nfFormatMes(v){
-  if(v===null || v===undefined || v==="") return "—";
-  const d = new Date(v);
-  if(!isNaN(d) && /^\d{4}-\d{2}-\d{2}/.test(String(v))){
-    return NF_MESES_PT[d.getUTCMonth()] + "/" + d.getUTCFullYear();
-  }
-  return String(v);
-}
-async function loadNotasFiscais(){
-  const el = document.getElementById("nf-rank-regional");
-  if(el) el.innerHTML = '<div class="empty-state">Carregando pendências…</div>';
-  try{
-    const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
-    // Timeout maior que o padrão: se a aba PAGAMENTOS ainda não tiver sido
-    // populada nenhuma vez (gatilho ainda não rodou), o Apps Script cai
-    // pro cálculo ao vivo (lento, lê Julho/Agosto inteiros) só nessa
-    // primeira vez — depois disso o cache já existe e a resposta é rápida.
-    const json = await fetchViaIframe(API_URL + sep + "tipo=pagamentos", 60000);
-    const brutos = Array.isArray(json) ? json : (json.pendentes || []);
-    // A coluna "mes" na planilha vem como data de verdade, não texto — o
-    // Apps Script devolve isso em JSON como "2026-08-01T03:00:00.000Z".
-    // Convertemos aqui pra "Agosto/2026" antes de tudo, pra filtro e tabela
-    // já usarem o texto legível (em vez do timestamp cru que aparecia no
-    // seletor "Mês").
-    NF_DATA = brutos.map(d => Object.assign({}, d, { mes: nfFormatMes(d.mes) }));
-    NF_LOADED = true;
-    populateNfFilters();
-    renderNotasFiscais();
-  } catch(err){
-    console.error(err);
-    if(el) el.innerHTML = '<div class="empty-state">Não foi possível carregar as pendências agora (' + err.message + ').</div>';
-  }
-}
-function nfUniq(rows, field){ return [...new Set(rows.map(d=>d[field]).filter(Boolean))].sort(); }
-// Filtra NF_DATA pelos filtros já escolhidos, exceto o campo "exceptKey" —
-// usado pra popular cada select só com as opções que ainda fazem sentido
-// dado o que já foi selecionado nos outros (ex: escolher a Sub-Regional
-// "CO" deixa o select de Analista mostrando só quem tem DOP pendente na CO).
-function nfFilteredExcept(exceptKey){
-  return NF_DATA.filter(d =>
-    (exceptKey==="mes" || !nfFilters.mes || d.mes===nfFilters.mes) &&
-    (exceptKey==="regional" || !nfFilters.regional || d.regional===nfFilters.regional) &&
-    (exceptKey==="subregional" || !nfFilters.subregional || d.subRegional===nfFilters.subregional) &&
-    (exceptKey==="analista" || !nfFilters.analista || d.analista===nfFilters.analista)
-  );
-}
-function populateNfFilters(){
-  populateSelect("nf-f-mes", nfUniq(nfFilteredExcept("mes"),"mes"));
-  populateSelect("nf-f-regional", nfUniq(nfFilteredExcept("regional"),"regional"));
-  populateSelect("nf-f-subregional", nfUniq(nfFilteredExcept("subregional"),"subRegional"));
-  populateSelect("nf-f-analista", nfUniq(nfFilteredExcept("analista"),"analista"));
-}
-["mes","regional","subregional","analista"].forEach(k=>{
-  const elSel = document.getElementById("nf-f-"+k);
-  if(elSel) elSel.addEventListener("change", e=>{ nfFilters[k]=e.target.value; populateNfFilters(); renderNotasFiscais(); });
-});
-function nfFiltered(){
-  return NF_DATA.filter(d =>
-    (!nfFilters.mes || d.mes===nfFilters.mes) &&
-    (!nfFilters.regional || d.regional===nfFilters.regional) &&
-    (!nfFilters.subregional || d.subRegional===nfFilters.subregional) &&
-    (!nfFilters.analista || d.analista===nfFilters.analista)
-  );
-}
-function nfGroupCount(rows, field){
-  const m = {};
-  rows.forEach(d=>{ const k = d[field] || "(vazio)"; m[k] = (m[k]||0)+1; });
-  return Object.entries(m).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value);
-}
-function nfRenderRankList(targetId, groups){
-  const el = document.getElementById(targetId);
-  if(!el) return;
-  if(!groups.length){ el.innerHTML = emptyRow(); return; }
-  const max = Math.max(...groups.map(g=>g.value),1);
-  el.innerHTML = groups.map((g,i)=>`
-    <div class="hist-rank-row" style="grid-template-columns:18px 1fr 60px 42px;">
-      <div class="rank-num">${i+1}</div>
-      <div class="hist-rank-label">${g.label}</div>
-      <div class="hbar-track"><div class="hbar-fill" style="width:${(g.value/max*100).toFixed(1)}%;background:var(--brand)"></div></div>
-      <div class="hist-rank-val">${g.value}</div>
-    </div>`).join("");
-}
-function renderNotasFiscais(){
-  const rows = nfFiltered();
-  const badge = document.getElementById("nav-nf-badge");
-  if(badge) badge.textContent = rows.length;
-  renderKpis("nf-kpi-grid", [
-    {label:"Total Pendentes", value: rows.length, icon:"📄", cls: rows.length>0?"warn":""},
-    {label:"Regionais Afetadas", value: nfUniq(rows,"regional").length, icon:"🗺"},
-    {label:"Analistas com Pendência", value: nfUniq(rows,"analista").length, icon:"🧑‍💼"}
-  ]);
-  nfRenderRankList("nf-rank-regional", nfGroupCount(rows,"regional"));
-  nfRenderRankList("nf-rank-subregional", nfGroupCount(rows,"subRegional"));
-  nfRenderRankList("nf-rank-analista", nfGroupCount(rows,"analista"));
-  const el = document.getElementById("nf-table");
-  if(el){
-    if(!rows.length){
-      el.innerHTML = '<tbody><tr><td class="empty-state">Nenhum DOP pendente para os filtros atuais.</td></tr></tbody>';
-    } else {
-      const thead = "<thead><tr><th>Mês</th><th>DOP</th><th>Empresa</th><th>Sub-Regional</th><th>Regional</th><th>Analista</th></tr></thead>";
-      const tbody = "<tbody>" + rows.map(d=>`<tr><td>${d.mes||"—"}</td><td class="dop-strong">${d.dop}</td><td>${d.empresa||"—"}</td><td>${d.subRegional||"—"}</td><td>${d.regional||"—"}</td><td>${d.analista||"—"}</td></tr>`).join("") + "</tbody>";
-      el.innerHTML = thead + tbody;
-    }
-  }
-}
-const nfRefreshBtn = document.getElementById("nf-refresh");
-if(nfRefreshBtn) nfRefreshBtn.addEventListener("click", ()=> loadNotasFiscais());
-function filtered(){
-  return DATA.filter(d =>
-    (!filters.resp || d.resp===filters.resp) &&
-    (!filters.subreg || d.subreg===filters.subreg) &&
-    (!filters.cidade || d.cidade===filters.cidade) &&
-    (!filters.estacao || d.estacao===filters.estacao) &&
-    (!filters.statuscoleta || d.statusColeta===filters.statuscoleta) &&
-    (!filters.risco || d.risco===filters.risco)
-  );
-}
-function alertIndicador(d){
-  if(d.statusColeta && d.statusColeta.toUpperCase().includes("3+")) return {label:"Sem coleta", valor:"3+ dias"};
-  if(d.horasSemColeta >= 20) return {label:"Sem coleta", valor: d.horasSemColeta.toFixed(0)+"h"};
-  if(d.pctAtrasados >= 15) return {label:"% Atrasados", valor: d.pctAtrasados.toFixed(1)+"%"};
-  if(d.backlogEnvelhecido > 0) return {label:"Backlog envelhecido", valor: String(d.backlogEnvelhecido)};
-  if(d.backlogOps > 300) return {label:"Backlog Total", valor: d.backlogOps.toLocaleString("pt-BR")};
-  return {label:"Risco Operacional", valor: d.risco};
-}
-// Cards principais — mesmo conjunto do painel de agências (backlog, coleta,
-// FIFO/Same Day médios, volumes).
-function kpiCardsPrimary(rows){
-  const backlogTotal = rows.reduce((s,d)=>s+d.backlogOps,0);
-  const semColetaHoje = rows.filter(d=>!d.statusColeta.toUpperCase().includes("COLETOU")).length;
-  const fifoMedio = rows.length? rows.reduce((s,d)=>s+d.fifoSemana,0)/rows.length : 0;
-  const sdMedio = rows.length? rows.reduce((s,d)=>s+d.sameDaySemana,0)/rows.length : 0;
-  // "Hoje" usa os mesmos flags do dia (FIFO HOJE / SAME DAY) já usados no
-  // Detalhe da Agência — aqui só agregamos a média entre as agências.
-  const fifoHojeMedio = rows.length? rows.reduce((s,d)=>s+d.fifoHojeFlag,0)/rows.length : 0;
-  const sdHojeMedio = rows.length? rows.reduce((s,d)=>s+d.sameDayFlag,0)/rows.length : 0;
-  const volOutbound = rows.reduce((s,d)=>s+d.outbound,0);
-  const volInbound = rows.reduce((s,d)=>s+d.inbound,0);
-  return [
-    {label:"Backlog Total (OPS)", value: backlogTotal.toLocaleString("pt-BR"), icon:"📦"},
-    {label:"Dops Sem Coleta Hoje", value: semColetaHoje, icon:"🚚", cls: semColetaHoje>0?"warn":""},
-    {label:"% FIFO Médio (semana)", value: pct0(fifoMedio), icon:"📈"},
-    {label:"% FIFO Médio (hoje)", value: pct0(fifoHojeMedio), icon:"📅"},
-    {label:"% Same Day Médio (semana)", value: pct0(sdMedio), icon:"⚡"},
-    {label:"% Same Day Médio (hoje)", value: pct0(sdHojeMedio), icon:"📅"},
-    {label:"Volume Outbound", value: volOutbound.toLocaleString("pt-BR"), icon:"⬆"},
-    {label:"Volume Inbound", value: volInbound.toLocaleString("pt-BR"), icon:"⬇"},
-  ];
-}
-// Cards extras — indicadores próprios deste painel operacional (risco,
-// atrasados), que não existem no painel de agências.
-function kpiCardsSecondary(rows){
-  const criticos = rows.filter(d=>riskClass(d.risco)==="critical").length;
-  const atrasadosMedio = rows.length? rows.reduce((s,d)=>s+d.pctAtrasados,0)/rows.length : 0;
-  const perdasQtdTotal = rows.reduce((s,d)=>s+d.perdasQtd,0);
-  const perdasValorTotal = rows.reduce((s,d)=>s+d.perdasValor,0);
-  return [
-    {label:"Agências em Risco Crítico", value: criticos, icon:"🔴", cls: criticos>0?"crit":""},
-    {label:"% Atrasados Médio", value: atrasadosMedio.toFixed(1)+"%", icon:"⏱"},
-    {label:"Pacotes Perdidos (Total)", value: perdasQtdTotal.toLocaleString("pt-BR"), icon:"📉", cls: perdasQtdTotal>0?"warn":""},
-    {label:"Valor Perdido (R$)", value: perdasValorTotal.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}), icon:"💸", cls: perdasValorTotal>0?"crit":""},
-  ];
-}
-function renderKpis(targetId, cards){
-  const el = document.getElementById(targetId);
-  el.innerHTML = "";
-  cards.forEach(k=>{
-    const div = document.createElement("div");
-    div.className = "kpi"+(k.cls?" "+k.cls:"");
-    div.innerHTML = `<div class="kpi-label">${k.icon} ${k.label}</div><div class="kpi-value">${k.value}</div>`;
-    el.appendChild(div);
-  });
-}
-const ALERTS_PREVIEW_COUNT = 8;
-function renderAlerts(rows){
-  const el = document.getElementById("alerts-list");
-  const allAlerts = rows.filter(d=> riskClass(d.risco)==="critical" || d.status.toUpperCase().includes("CRÍT"))
-    .sort((a,b)=>b.horasSemColeta-a.horasSemColeta);
-  const hasMore = allAlerts.length > ALERTS_PREVIEW_COUNT;
-  const alerts = expandState.alerts ? allAlerts : allAlerts.slice(0, ALERTS_PREVIEW_COUNT);
-  el.innerHTML = "";
-  if(!alerts.length){ el.innerHTML = '<div class="empty-state">Nenhum alerta crítico no momento.</div>'; }
-  alerts.forEach(d=>{
-    const ind = alertIndicador(d);
-    const row = document.createElement("div");
-    row.className = "alert-row";
-    row.style.gridTemplateColumns = "3px 1.3fr 0.55fr 0.95fr 0.7fr";
-    row.innerHTML = `<div class="alert-bar" style="background:var(--critical)"></div>
-      <div><div class="alert-name">${d.agencia}</div><div class="alert-sub">${d.cidade}</div></div>
-      <div>${d.dop}</div>
-      <div>${ind.label}</div>
-      <div>${ind.valor}</div>`;
-    row.onclick = ()=> openDetail(d.dop);
-    el.appendChild(row);
-  });
-  const top = document.getElementById("alerts-toggle-top");
-  const bottom = document.getElementById("alerts-toggle-bottom");
-  const showToggle = hasMore || expandState.alerts;
-  if(top) top.style.display = showToggle ? "" : "none";
-  if(bottom) bottom.style.display = showToggle ? "" : "none";
-  if(top) top.textContent = expandState.alerts ? "Fechar ✕" : "Ver todas";
-  if(bottom){
-    bottom.textContent = expandState.alerts ? "− Fechar" : "+ Ver todas as alertas";
-    bottom.classList.toggle("is-open", expandState.alerts);
-  }
-}
-function donut(svgId, legendId, groups, colorFn){
-  const svg = document.getElementById(svgId);
-  const legend = document.getElementById(legendId);
-  const total = groups.reduce((s,g)=>s+g.value,0) || 1;
-  const cx=75, cy=75, r=58, rInner=34;
-  let angle = -90;
-  let paths = "";
-  groups.forEach(g=>{
-    const frac = g.value/total;
-    const sweep = frac*360;
-    const a0 = angle, a1 = angle+sweep;
-    const large = sweep>180?1:0;
-    const p0 = polar(cx,cy,r,a0), p1 = polar(cx,cy,r,a1);
-    const p0i = polar(cx,cy,rInner,a0), p1i = polar(cx,cy,rInner,a1);
-    paths += `<path d="M ${p0.x} ${p0.y} A ${r} ${r} 0 ${large} 1 ${p1.x} ${p1.y} L ${p1i.x} ${p1i.y} A ${rInner} ${rInner} 0 ${large} 0 ${p0i.x} ${p0i.y} Z" fill="${g.color}" stroke="var(--surface-2)" stroke-width="2"/>`;
-    angle = a1;
-  });
-  svg.innerHTML = paths + `<text x="75" y="70" text-anchor="middle" font-size="20" font-weight="700" fill="var(--text-primary)">${total}</text><text x="75" y="86" text-anchor="middle" font-size="10" fill="var(--text-muted)">agências</text>`;
-  legend.innerHTML = groups.map(g=>`<div class="legend-item"><span class="legend-swatch" style="background:${g.color}"></span>${g.label}<span class="legend-val">${g.value} (${((g.value/total)*100).toFixed(0)}%)</span></div>`).join("");
-}
-function polar(cx,cy,r,angleDeg){ const a=(angleDeg*Math.PI)/180; return {x:cx+r*Math.cos(a), y:cy+r*Math.sin(a)}; }
-function groupCount(rows, field, mapClassColor){
-  const m = {};
-  rows.forEach(d=>{ const k=d[field]||"—"; m[k]=(m[k]||0)+1; });
-  return Object.entries(m).map(([label,value])=>({label, value, color: mapClassColor(label)}))
-    .sort((a,b)=>b.value-a.value);
-}
-function fifoBadgeClass(v){ return v>=0.95?"good":v>=0.85?"warning":"critical"; }
-const RESUMO_PREVIEW_COUNT = 5;
-function renderResumoToggle(topId, bottomId, stateKey, defaultLabel, hasMore){
-  const top = document.getElementById(topId);
-  const bottom = document.getElementById(bottomId);
-  const isOpen = expandState[stateKey];
-  const showToggle = hasMore || isOpen;
-  if(top){ top.style.display = showToggle ? "" : "none"; top.textContent = isOpen ? "Fechar ✕" : defaultLabel; }
-  if(bottom){
-    bottom.style.display = showToggle ? "" : "none";
-    bottom.textContent = isOpen ? "− Fechar" : "+ "+defaultLabel;
-    bottom.classList.toggle("is-open", isOpen);
-  }
-}
-function renderRankLists(rows){
-  const byFifo = [...rows].sort((a,b)=>a.fifoSemana-b.fifoSemana).slice(0,8);
-  const fifoHtml = byFifo.map((d,i)=>rankRow(i,d,pct0(d.fifoSemana), fifoBadgeClass(d.fifoSemana))).join("") || emptyRow();
-  document.getElementById("rank-fifo").innerHTML = fifoHtml;
-  const rankFifoResumo = document.getElementById("rank-fifo-resumo");
-  const fifoPreview = expandState.fifoResumo ? byFifo : byFifo.slice(0, RESUMO_PREVIEW_COUNT);
-  if(rankFifoResumo) rankFifoResumo.innerHTML = fifoPreview.map((d,i)=>rankRow(i,d,pct0(d.fifoSemana), fifoBadgeClass(d.fifoSemana))).join("") || emptyRow();
-  renderResumoToggle("fifo-resumo-toggle-top","fifo-resumo-toggle-bottom","fifoResumo","Ver ranking completo", byFifo.length>RESUMO_PREVIEW_COUNT);
-  const bySameDay = [...rows].sort((a,b)=>a.sameDaySemana-b.sameDaySemana).slice(0,8);
-  const sdHtml = bySameDay.map((d,i)=>rankRow(i,d,pct0(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana))).join("") || emptyRow();
-  document.getElementById("rank-sameday").innerHTML = sdHtml;
-  const rankSdResumo = document.getElementById("rank-sameday-resumo");
-  const sdPreview = expandState.sdResumo ? bySameDay : bySameDay.slice(0, RESUMO_PREVIEW_COUNT);
-  if(rankSdResumo) rankSdResumo.innerHTML = sdPreview.map((d,i)=>rankRow(i,d,pct0(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana))).join("") || emptyRow();
-  renderResumoToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdResumo","Ver ranking completo", bySameDay.length>RESUMO_PREVIEW_COUNT);
-  // Maiores ofensores em Losses — ranqueia pelo valor perdido (R$), que é o
-  // que realmente pesa pro negócio (mais direto que quantidade de pacotes).
-  const byLosses = [...rows].sort((a,b)=>b.perdasValor-a.perdasValor).slice(0,8);
-  document.getElementById("rank-losses").innerHTML = byLosses.map((d,i)=>rankRow(
-    i, d,
-    d.perdasValor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}),
-    d.perdasValor>=1000?"critical":d.perdasValor>0?"warning":"good",
-    d.perdasQtd.toLocaleString("pt-BR") + (d.perdasQtd===1?" pacote":" pacotes")
-  )).join("") || emptyRow();
-  const byColeta = [...rows].sort((a,b)=>b.horasSemColeta-a.horasSemColeta).slice(0,8);
-  document.getElementById("rank-coleta").innerHTML = byColeta.map((d,i)=>rankRow(i,d,d.horasSemColeta.toFixed(0)+"h", coletaClass(d.statusColeta))).join("") || emptyRow();
-}
-// Tabela "Dops sem coleta há mais tempo" — mesma lógica do painel de agências.
-const SEM_COLETA_COLS = [
-  {k:"agencia", l:"Agência"}, {k:"dop", l:"DOP"},
-  {k:"ultimaColetaFmt", l:"Última Coleta"}, {k:"agingSemColeta", l:"Dias Sem Coleta"},
-  {k:"backlogOps", l:"Backlog"}
-];
-function renderSemColetaTable(rows){
-  const withAging = rows.filter(d=>d.agingSemColeta > 0)
-    .sort((a,b)=>b.agingSemColeta-a.agingSemColeta)
-    .slice(0,8)
-    .map(d=> Object.assign({}, d, { ultimaColetaFmt: fmtDate(d.ultimaColeta) }));
-  const el = document.getElementById("table-sem-coleta");
-  if(!el) return;
-  // NUNCA usar el.parentElement.innerHTML aqui — isso apaga o próprio elemento
-  // #table-sem-coleta do DOM (ele é filho do parentElement substituído), e na
-  // próxima vez que essa função rodar (auto-refresh, filtro mudando etc.)
-  // document.getElementById volta null e quebra a atualização inteira do
-  // painel silenciosamente. E como #table-sem-coleta é um <table>, um <div>
-  // solto como innerHTML dele é HTML inválido (o navegador "foster-parenta"
-  // pra fora da tabela) — por isso a mensagem vai numa <td>, não numa <div>.
-  if(!withAging.length){
-    el.innerHTML = '<tbody><tr><td colspan="' + SEM_COLETA_COLS.length + '" class="empty-state">Todas as agências coletaram hoje.</td></tr></tbody>';
-    return;
-  }
-  const thead = "<thead><tr>"+SEM_COLETA_COLS.map(c=>`<th>${c.l}</th>`).join("")+"</tr></thead>";
-  const tbody = "<tbody>"+withAging.map(d=>{
-    return "<tr onclick=\"openDetail("+JSON.stringify(d.dop)+")\">"+SEM_COLETA_COLS.map(c=>{
-      let v = d[c.k];
-      if(c.k==="dop") return `<td class="dop-strong">${v}</td>`;
-      if(c.k==="agingSemColeta") return `<td><span class="badge ${v>=3?'critical':v>=2?'warning':'warning'}"><span class="ic"></span>${v} dia(s)</span></td>`;
-      if(typeof v==="number") v = v.toLocaleString("pt-BR",{maximumFractionDigits:1});
-      return `<td>${v}</td>`;
-    }).join("")+"</tr>";
-  }).join("")+"</tbody>";
-  el.innerHTML = thead+tbody;
-}
-function emptyRow(){ return '<div class="empty-state">Sem dados para os filtros atuais.</div>'; }
-function rankRow(i,d,val,cls,extra){
-  const cols = extra!=null ? "18px 1.6fr 0.75fr 0.9fr" : "18px 1.6fr 0.9fr";
-  const extraCol = extra!=null ? `<div style="text-align:right;color:var(--text-muted);font-size:11.5px">${extra}</div>` : "";
-  return `<div class="alert-row" style="grid-template-columns:${cols};cursor:pointer" onclick="openDetail(${JSON.stringify(d.dop)})">
-    <div class="rank-num">${i+1}</div>
-    <div><div class="alert-name">${d.agencia}</div><div class="alert-sub">DOP ${d.dop} · ${d.cidade}</div></div>
-    ${extraCol}
-    <div style="text-align:right"><span class="badge ${cls}"><span class="ic"></span>${val}</span></div>
-  </div>`;
-}
-const TABLE_COLS = [
-  {k:"dop", l:"DOP"}, {k:"agencia", l:"Agência"}, {k:"cidade", l:"Cidade"}, {k:"resp", l:"Responsável"},
-  {k:"backlogOps", l:"Backlog"},
-  {k:"fifoSemana", l:"% FIFO Semana", fmt:pct0}, {k:"fifoHojeFlag", l:"% FIFO Hoje", fmt:pct0},
-  {k:"sameDaySemana", l:"% Same Day Semana", fmt:pct0}, {k:"sameDayFlag", l:"% Same Day Hoje", fmt:pct0},
-  {k:"perdasQtd", l:"Pacotes Perdidos"}, {k:"risco", l:"Risco", badge:riskClass}, {k:"statusColeta", l:"Coleta", badge:coletaClass}, {k:"status", l:"Status", badge:riskClass}
-];
-let sortState = { key:"backlogOps", dir:-1 };
-function renderTable(targetId, rows, cols, sortKeyState){
-  const el = document.getElementById(targetId);
-  const st = sortKeyState;
-  const sorted = [...rows].sort((a,b)=>{
-    let va=a[st.key], vb=b[st.key];
-    if(typeof va === "string") return va.localeCompare(vb)*st.dir;
-    return (va-vb)*st.dir;
-  });
-  const thead = "<thead><tr>"+cols.map(c=>`<th data-key="${c.k}">${c.l} ${st.key===c.k?(st.dir===1?'<span class="sort-ind">▲</span>':'<span class="sort-ind">▼</span>'):''}</th>`).join("")+"</tr></thead>";
-  const tbody = "<tbody>"+sorted.map(d=>{
-    return "<tr onclick=\"openDetail("+JSON.stringify(d.dop)+")\">"+cols.map(c=>{
-      let v = d[c.k];
-      if(c.fmt) v = c.fmt(v);
-      if(c.badge){ const cls=c.badge(v); return `<td><span class="badge ${cls}"><span class="ic"></span>${v}</span></td>`; }
-      if(c.k==="dop") return `<td class="dop-strong">${v}</td>`;
-      if(typeof v==="number") v = v.toLocaleString("pt-BR",{maximumFractionDigits:1});
-      return `<td>${v}</td>`;
-    }).join("")+"</tr>";
-  }).join("")+"</tbody>";
-  el.innerHTML = thead+tbody;
-  el.querySelectorAll("th").forEach(th=>{
-    th.onclick = ()=>{
-      const k = th.dataset.key;
-      if(st.key===k) st.dir*=-1; else { st.key=k; st.dir=1; }
-      renderTable(targetId, rows, cols, st);
-    };
-  });
-}
-const BASE_COLS = [
-  {k:"dop", l:"DOP"}, {k:"agencia", l:"Agência"}, {k:"resp", l:"Responsável"}, {k:"cidade", l:"Cidade"}, {k:"estado", l:"Estado"},
-  {k:"subreg", l:"Sub-Regional"}, {k:"estacao", l:"Estação"}, {k:"backlog", l:"Backlog"}, {k:"backlogOps", l:"Backlog OPS"},
-  {k:"inbound", l:"Inbound"}, {k:"outbound", l:"Outbound"},
-  {k:"fifoSemana", l:"% FIFO Semana", fmt:pct0}, {k:"fifoHojeFlag", l:"% FIFO Hoje", fmt:pct0},
-  {k:"sameDaySemana", l:"% Same Day Semana", fmt:pct0}, {k:"sameDayFlag", l:"% Same Day Hoje", fmt:pct0},
-  {k:"pctAtrasados", l:"% Atrasados"}, {k:"horasSemColeta", l:"Hs sem coleta"}, {k:"risco", l:"Risco", badge:riskClass},
-  {k:"statusColeta", l:"Status Coleta", badge:coletaClass}, {k:"status", l:"Status", badge:riskClass}
-];
-let baseSortState = { key:"dop", dir:1 };
-let gestaoSortState = { key:"backlogOps", dir:-1 };
-function fmtDate(iso){
-  if(!iso) return "—";
-  const d = new Date(iso);
-  if(isNaN(d)) return iso;
-  return d.toLocaleString("pt-BR", {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
-}
-function openDetail(dop){
-  const d = DATA.find(x=>String(x.dop)===String(dop));
-  document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("active"));
-  document.querySelector('.nav-item[data-section="detalhe"]').classList.add("active");
-  document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
-  document.getElementById("sec-detalhe").classList.add("active");
-  document.getElementById("detail-search").value = d ? d.agencia : "";
-  renderDetail(d);
-}
-function renderDetail(d){
-  const card = document.getElementById("detail-card");
-  if(!d){ card.innerHTML = '<div class="empty-state">Nenhuma agência encontrada.</div>'; return; }
-  card.innerHTML = `
-    <div class="detail-header">
-      <div class="dopid">${d.dop}</div>
-      <div>
-        <div class="name">${d.agencia}</div>
-        <div class="sub">${d.cidade} — ${d.estado} · Responsável: ${d.resp} · Estação ${d.estacao}</div>
-      </div>
-      <div style="margin-left:auto; display:flex; gap:8px;">
-        <span class="badge ${riskClass(d.risco)}"><span class="ic"></span>${d.risco}</span>
-        <span class="badge ${riskClass(d.status)}"><span class="ic"></span>${d.status}</span>
-      </div>
-    </div>
-    <div class="detail-grid">
-      <div class="detail-item"><div class="l">Backlog Total (OPS)</div><div class="v">${d.backlogOps.toLocaleString("pt-BR")}</div></div>
-      <div class="detail-item"><div class="l">% FIFO Semana</div><div class="v">${pct0(d.fifoSemana)}</div></div>
-      <div class="detail-item"><div class="l">% FIFO Hoje</div><div class="v">${pct0(d.fifoHojeFlag)}</div></div>
-      <div class="detail-item"><div class="l">% Same Day Semana</div><div class="v">${pct0(d.sameDaySemana)}</div></div>
-      <div class="detail-item"><div class="l">% Same Day Hoje</div><div class="v">${pct0(d.sameDayFlag)}</div></div>
-      <div class="detail-item"><div class="l">Inbound / Outbound</div><div class="v">${d.inbound.toLocaleString("pt-BR")} / ${d.outbound.toLocaleString("pt-BR")}</div></div>
-      <div class="detail-item"><div class="l">% Atrasados</div><div class="v">${d.pctAtrasados.toFixed(1)}%</div></div>
-      <div class="detail-item"><div class="l">Backlog Envelhecido</div><div class="v">${d.backlogEnvelhecido}</div></div>
-      <div class="detail-item"><div class="l">Pacotes Perdidos</div><div class="v">${d.perdasQtd}</div></div>
-      <div class="detail-item"><div class="l">Valor Perdido</div><div class="v">${d.perdasValor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</div></div>
-      <div class="detail-item"><div class="l">Status Coleta</div><div class="v" style="font-size:13px">${d.statusColeta}</div></div>
-      <div class="detail-item"><div class="l">Horas sem coleta</div><div class="v">${d.horasSemColeta.toFixed(1)}h</div></div>
-      <div class="detail-item"><div class="l">Última Coleta</div><div class="v" style="font-size:13px">${fmtDate(d.ultimaColeta)}</div></div>
-      <div class="detail-item"><div class="l">Maturação</div><div class="v" style="font-size:13px">${d.maturacao}</div></div>
-      <div class="detail-item"><div class="l">Teve coleta</div><div class="v" style="font-size:13px">${d.tevecoleta}</div></div>
-      <div class="detail-item"><div class="l">Atualizado em</div><div class="v" style="font-size:13px">${fmtDate(d.data)}</div></div>
-    </div>`;
-}
-document.getElementById("detail-search").addEventListener("input", e=>{
-  const q = e.target.value.trim().toLowerCase();
-  if(!q){ document.getElementById("detail-card").innerHTML = '<div class="empty-state">Busque uma agência pelo DOP ou nome para ver o detalhe completo.</div>'; return; }
-  const d = DATA.find(x => String(x.dop).toLowerCase()===q || x.agencia.toLowerCase().includes(q) || x.fantasia.toLowerCase().includes(q));
-  renderDetail(d);
-});
-function renderGestaoPills(){
-  const el = document.getElementById("gestao-pills");
-  const names = uniq("resp");
-  el.innerHTML = "";
-  names.forEach(n=>{
-    const p = document.createElement("div");
-    p.className = "pill"+(filters.gestaoResp===n?" active":"");
-    p.textContent = n;
-    p.onclick = ()=>{ filters.gestaoResp = filters.gestaoResp===n?null:n; renderAll(); };
-    el.appendChild(p);
-  });
-}
-function renderAll(){
-  const rows = filtered();
-  CURRENT_ROWS = rows;
-  renderKpis("kpi-grid", kpiCardsPrimary(rows));
-  renderKpis("kpi-grid-extra", kpiCardsSecondary(rows));
-  renderAlerts(rows);
-  donut("donut-risco","legend-risco", groupCount(rows,"risco", l=>({good:"#0ca30c",warning:"#fab219",critical:"#d03b3b"}[riskClass(l)])), null);
-  donut("donut-coleta","legend-coleta", groupCount(rows,"statusColeta", l=>({good:"#0ca30c",warning:"#fab219",critical:"#d03b3b"}[coletaClass(l)])), null);
-  const cidadeCounts = {};
-  rows.forEach(d=>{ cidadeCounts[d.cidade]=(cidadeCounts[d.cidade]||0)+1; });
-  let cidadeArr = Object.entries(cidadeCounts).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value);
-  let top = cidadeArr.slice(0,7);
-  const rest = cidadeArr.slice(7).reduce((s,g)=>s+g.value,0);
-  if(rest>0) top.push({label:"Outras", value:rest});
-  top.forEach((g,i)=> g.color = CATS[i % CATS.length]);
-  donut("donut-cidade","legend-cidade", top, null);
-  renderRankLists(rows);
-  renderSemColetaTable(rows);
-  renderTable("table-desempenho", rows, TABLE_COLS, sortState);
-  renderTable("table-base", rows, BASE_COLS, baseSortState);
-  // Minha Gestão
-  const gestaoRows = filters.gestaoResp ? rows.filter(d=>d.resp===filters.gestaoResp) : rows;
-  document.getElementById("nav-gestao-badge").textContent = filters.gestaoResp ? gestaoRows.length : rows.length;
-  renderKpis("kpi-grid-gestao", kpiCardsPrimary(gestaoRows).concat(kpiCardsSecondary(gestaoRows)));
-  renderTable("table-gestao", gestaoRows, TABLE_COLS, gestaoSortState);
-  renderGestaoPills();
-  const dates = rows.map(d=>d.data).filter(Boolean).sort();
-  const last = dates[dates.length-1];
-  document.getElementById("update-chip").title = "Última linha atualizada na planilha: " + (last ? fmtDate(last) : "—");
-  // Se o Histórico Pós-Fechamento já foi carregado, atualiza o ranking dele
-  // também — os filtros do topo (Responsável, Estação, etc.) devem valer
-  // pra ele igual valem pro resto do painel.
-  if(HIST_LOADED) renderHistoricoRanking();
-  // Mesma lógica pra Análise de Backlog, já carregada ou não.
-  if(BACKLOG_LOADED) renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
-}
-// nav
-document.querySelectorAll(".nav-item").forEach(item=>{
-  item.addEventListener("click", ()=>{
-    document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("active"));
-    item.classList.add("active");
-    document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
-    document.getElementById("sec-"+item.dataset.section).classList.add("active");
-    if(item.dataset.section === "historico" && !HIST_LOADED){ loadHistorico(); }
-    if(item.dataset.section === "backlog" && !BACKLOG_LOADED){ loadBacklogAnalise(); }
-    if(item.dataset.section === "notasfiscais" && !NF_LOADED){ loadNotasFiscais(); }
-  });
-});
-document.querySelectorAll("[data-goto]").forEach(el=>{
-  el.addEventListener("click", ()=>{
-    document.querySelector('.nav-item[data-section="'+el.dataset.goto+'"]').click();
-  });
-});
-// Toggles "ver todas / ver ranking completo" ↔ "fechar" dos cards do Resumo
-// Geral — reaproveita os dados já filtrados (CURRENT_ROWS), sem precisar
-// refazer todo o renderAll().
-wireExpandToggle("alerts-toggle-top","alerts-toggle-bottom","alerts", ()=> renderAlerts(CURRENT_ROWS));
-wireExpandToggle("fifo-resumo-toggle-top","fifo-resumo-toggle-bottom","fifoResumo", ()=> renderRankLists(CURRENT_ROWS));
-wireExpandToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdResumo", ()=> renderRankLists(CURRENT_ROWS));
-// theme
-const themeBtn = document.getElementById("theme-toggle");
-function applyTheme(t){
-  document.documentElement.setAttribute("data-theme", t);
-  themeBtn.textContent = t==="dark" ? "☀ Modo claro" : "◑ Modo escuro";
-}
-let currentTheme = "light";
-themeBtn.addEventListener("click", ()=>{ currentTheme = currentTheme==="dark"?"light":"dark"; applyTheme(currentTheme); });
-applyTheme(currentTheme);
-loadData(true);
-setInterval(()=> loadData(false), REFRESH_INTERVAL_MS);
+.live-dot { width:8px; height:8px; border-radius:50%; background: var(--good); flex-shrink:0; }
+.live-dot.stale { background: var(--critical); }
