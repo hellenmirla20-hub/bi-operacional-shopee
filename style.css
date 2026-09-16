@@ -231,6 +231,13 @@ table.data tbody tr.row-selected { background: var(--brand-bg); }
 .detail-item { background:var(--page); border:1px solid var(--border); border-radius:7px; padding:11px 13px; }
 .detail-item .l { font-size:10.5px; text-transform:uppercase; color:var(--text-muted); margin-bottom:4px; letter-spacing:.03em;}
 .detail-item .v { font-size:16px; font-weight:700; }
+/* Quadro maior pro Backlog Envelhecido, que carrega o total + o
+   detalhamento por frente (Forward/RR/BSC Failed) embaixo do valor. */
+.detail-item-wide { grid-column: span 2; }
+@media (max-width:900px){ .detail-item-wide { grid-column: span 2; } }
+.backlog-envelhecido-breakdown { display:flex; flex-direction:column; gap:6px; margin-top:10px; padding-top:10px; border-top:1px solid var(--border); }
+.backlog-envelhecido-row { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:12.5px; }
+.backlog-envelhecido-row .val { font-weight:700; color:var(--text-primary); font-variant-numeric: tabular-nums; }
 .detail-header { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
 .detail-header .dopid { background:var(--page); border:1px solid var(--border); border-radius:6px; padding:8px 14px; font-weight:700; font-size:18px; }
 .detail-header .name { font-size:17px; font-weight:700; }
